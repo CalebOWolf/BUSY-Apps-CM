@@ -72,7 +72,7 @@ Everything is in `render.py`:
 
 Re-run `python render.py` after any change.
 
-### 😴 Nap timer
+### 🐺 Nap timer
 
 Luca waits **10 minutes** by default. Pick another nap time with `--nap`:
 
