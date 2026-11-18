@@ -17,7 +17,7 @@ import math
 import unicodedata
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 HERE = Path(__file__).parent
 PORTRAIT = HERE / "assets" / "luca_small.png"
@@ -231,6 +231,46 @@ TILE_POSES = {"play": 4, "hop": 4, "pause": 1, "idle": 1}
 
 
 # --------------------------------------------------------------------------
+# Volume pop-up (shown for a moment when the wheel turns)
+# --------------------------------------------------------------------------
+VOL_PANEL = (TILE_W, 0, FRONT_W - TILE_W, FRONT_H)   # x, y, w, h: covers the text area
+VOL_BAR = (31, 6, 38, 4)                             # x, y, w, h of the level bar
+SPEAKER = [
+    "...X....",
+    "..XX.X..",
+    "XXXX..X.",
+    "XXXX..X.",
+    "XXXX..X.",
+    "..XX.X..",
+    "...X....",
+]
+
+
+def volume_icon() -> Image.Image:
+    """A little white speaker with a drop shadow."""
+    img = Image.new("RGBA", (10, 8), (0, 0, 0, 0))
+    for y, row in enumerate(SPEAKER):
+        for x, ch in enumerate(row):
+            if ch == "X":
+                img.putpixel((x + 1, y + 1), (0, 30, 90, 255))  # shadow
+    for y, row in enumerate(SPEAKER):
+        for x, ch in enumerate(row):
+            if ch == "X":
+                img.putpixel((x, y), (255, 255, 255, 255))
+    return img
+
+
+def volume_sign(up: bool) -> Image.Image:
+    """A mint + or -, for when the volume level can't be read."""
+    img = Image.new("RGBA", (7, 7), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.line([(0, 3), (6, 3)], fill=(120, 255, 200, 255))
+    if up:
+        d.line([(3, 0), (3, 6)], fill=(120, 255, 200, 255))
+    return img
+
+
+# --------------------------------------------------------------------------
 # Background sky
 # --------------------------------------------------------------------------
 BUBBLES = [(26, 1.0, 0.0, 1), (35, 0.7, 5.0, 2), (46, 1.2, 9.0, 1),
@@ -283,7 +323,8 @@ def fit(d: ImageDraw.ImageDraw, text: str, f, width: int) -> str:
     return text.rstrip() + "…"
 
 
-def back_screen(title: str, artist: str, album: str, playing: bool) -> Image.Image:
+def back_screen(title: str, artist: str, album: str, playing: bool,
+                cover: Image.Image | None = None) -> Image.Image:
     img = Image.new("L", (BACK_W, BACK_H), 0)
     d = ImageDraw.Draw(img)
     for y in range(BACK_H):  # desktop glow
@@ -319,8 +360,12 @@ def back_screen(title: str, artist: str, album: str, playing: bool) -> Image.Ima
     cx0, cy0, cx1, cy1 = wx0 + 3, wy0 + 14, wx1 - 3, wy1 - 3
     d.rectangle([cx0, cy0, cx1, cy1], fill=235, outline=60)
 
-    # "album art": Luca with his headphones on
-    art = Image.open(PORTRAIT).convert("L").resize((36, 36), Image.LANCZOS)
+    # album art, or Luca's portrait when the song has none
+    if cover is not None:
+        src = Image.alpha_composite(Image.new("RGBA", cover.size, "white"), cover.convert("RGBA"))
+        art = ImageOps.autocontrast(ImageOps.fit(src.convert("L"), (36, 36), Image.LANCZOS), cutoff=1)
+    else:
+        art = Image.open(PORTRAIT).convert("L").resize((36, 36), Image.LANCZOS)
     img.paste(art, (cx0 + 3, cy0 + 3))
     d.rectangle([cx0 + 2, cy0 + 2, cx0 + 39, cy0 + 39], outline=40)
 

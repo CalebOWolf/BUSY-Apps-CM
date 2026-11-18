@@ -9,6 +9,7 @@ player window. The bar's buttons control your music:
     OK      play / pause
     Start   next song      (Luca hops)
     Back    previous song
+    Wheel   volume up / down
 
 Luca only appears while music plays. When it stops or pauses he stays for
 2 minutes (--linger), then steps aside so the bar shows its usual screens.
@@ -16,6 +17,7 @@ Luca only appears while music plays. When it stops or pauses he stays for
     python now_playing.py                 # BUSY Bar on USB (10.0.4.20)
     python now_playing.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
     python now_playing.py --demo          # try it with a pretend playlist
+    python now_playing.py --player spotify   # Linux: only ever show Spotify
     python now_playing.py --install       # Linux: start automatically at login
     python now_playing.py --uninstall     # Linux: stop starting at login
 
@@ -39,6 +41,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from PIL import Image
 
 import art
 import media
@@ -128,10 +132,17 @@ def minutes(text: str) -> float:
 class Screen:
     """What's on the bar right now, and what changes from frame to frame."""
 
-    def __init__(self, bar_: BusyBar, player, linger: float):
+    def __init__(self, bar_: BusyBar, player, linger: float, volume: media.Volume):
         self.bar = bar_
         self.player = player
         self.linger = linger
+        self.volume = volume
+        self.pending_clicks = 0            # wheel clicks not yet applied
+        self.volume_level: float | None = None
+        self.volume_up = True
+        self.volume_until = 0.0            # show the volume pop-up until then
+        self.covers: dict[str, Image.Image | None] = {}
+        self.reverse_wheel = False
         self.track = media.NOTHING
         self.last_playing = float("-inf")  # when music was last heard playing
         self.online = False                # artwork uploaded and the bar answering
@@ -158,6 +169,19 @@ class Screen:
         for pose, n in art.TILE_POSES.items():
             for i in range(n):
                 self.bar.upload_image(f"tile_{pose}_{i}.png", art.tile(pose, i))
+        self.bar.upload_image("vol_icon.png", art.volume_icon())
+        self.bar.upload_image("vol_up.png", art.volume_sign(True))
+        self.bar.upload_image("vol_down.png", art.volume_sign(False))
+
+    def cover(self, url: str) -> Image.Image | None:
+        """The song's album art, fetched once per song; None if there's none."""
+        if not url:
+            return None
+        if url not in self.covers:
+            if len(self.covers) > 30:
+                self.covers.clear()
+            self.covers[url] = load_cover(url)
+        return self.covers[url]
 
     def show_song(self, track: media.Track) -> None:
         """Render and upload this song's text strip and back screen."""
@@ -169,7 +193,7 @@ class Screen:
         strip, loop = art.text_strip(text, dim=not track.playing)
         self.bar.upload_image(f"strip_{slot}.png", strip)
         self.bar.upload_image(f"back_{slot}.png", art.back_screen(
-            track.title, track.artist, track.album, track.playing))
+            track.title, track.artist, track.album, track.playing, self.cover(track.art_url)))
         new_song = self.shown_key is None or self.shown_key[:3] != track.key[:3]
         self.slot, self.strip_loop, self.shown_key = slot, loop, track.key
         if new_song:
@@ -215,13 +239,52 @@ class Screen:
             els.append({"id": "time", "type": "text", "display": "back", "font": "small",
                         "text": f"{clock(t.position_now())} / {clock(t.duration)}",
                         "color": "#282828FF", "x": tx, "y": ty, "align": "top_right"})
+        if now < self.volume_until:
+            els += self.volume_popup()
         return els
+
+    def volume_popup(self) -> list[dict]:
+        """A glossy glass panel over the title with a speaker and a level bar."""
+        px, py, pw, ph = art.VOL_PANEL
+        els = [
+            {"id": "vol_panel", "type": "rectangle", "display": "front", "x": px, "y": py,
+             "width": pw, "height": ph, "fill": "gradient_v",
+             "fill_colors": ["#A0DCFFFF", "#0A50B4FF"], "border_width": 0},
+            image("vol_icon", "vol_icon.png", px + 3, 4),
+        ]
+        bx, by, bw, bh = art.VOL_BAR
+        els.append(bar("vol_track", bx, by, bw, bh, "#0A3278FF"))
+        if self.volume_level is None:  # can't read the level: just show + or -
+            els.append(image("vol_sign", "vol_up.png" if self.volume_up else "vol_down.png",
+                             bx + bw // 2 - 3, 4))
+        elif round(bw * min(self.volume_level, 1.0)):
+            els.append(bar("vol_fill", bx, by, round(bw * min(self.volume_level, 1.0)), bh,
+                           "#78FFC8FF"))
+        return els
+
+
+def load_cover(url: str) -> Image.Image | None:
+    """Open album art from a file:// or http(s):// address."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme == "file":
+            img = Image.open(urllib.request.url2pathname(parsed.path))
+        elif parsed.scheme in ("http", "https"):
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                img = Image.open(io.BytesIO(resp.read()))
+        else:
+            return None
+        img.load()
+        return img
+    except Exception:
+        return None
 
 
 async def follow_music(screen: Screen) -> None:
     """Ask the computer what's playing, about once a second."""
     last_key = None
     while True:
+        screen.refresh.clear()
         try:
             track = await screen.player.read()
         except Exception as err:  # a player hiccup shouldn't stop the show
@@ -237,7 +300,6 @@ async def follow_music(screen: Screen) -> None:
             else:
                 print("  ⏹ nothing playing")
             last_key = track.key
-        screen.refresh.clear()
         try:
             await asyncio.wait_for(screen.refresh.wait(), timeout=1)
         except asyncio.TimeoutError:
@@ -280,7 +342,7 @@ async def listen(screen: Screen) -> None:
     """Follow the bar's live status stream and turn presses into music controls."""
     try:
         from busylib import AsyncBusyBar
-        from busylib.features import ButtonEvent, input_events
+        from busylib.features import ButtonEvent, EncoderEvent, input_events
     except ImportError:
         print("ℹ️  Install busylib (pip install busylib) to control music from the bar.")
         return
@@ -294,7 +356,12 @@ async def listen(screen: Screen) -> None:
                 if not isinstance(message, dict) or not screen.shown:
                     continue  # buttons belong to the bar while Luca is away
                 for event in input_events(message):
-                    if isinstance(event, ButtonEvent) and event.is_press:
+                    if isinstance(event, EncoderEvent) and event.delta and screen.volume.available:
+                        clicks = -event.delta if screen.reverse_wheel else event.delta
+                        screen.pending_clicks += clicks
+                        screen.volume_up = clicks > 0
+                        screen.volume_until = time.monotonic() + 1.5
+                    elif isinstance(event, ButtonEvent) and event.is_press:
                         action = BUTTON_ACTIONS.get(event.button)
                         if not action:
                             continue
@@ -309,8 +376,21 @@ async def listen(screen: Screen) -> None:
             delay = min(delay * 2, 30)
 
 
+async def turn_volume(screen: Screen) -> None:
+    """Apply wheel clicks in small batches, so a fast spin doesn't queue up."""
+    screen.volume_level = await asyncio.to_thread(screen.volume.level)
+    while True:
+        await asyncio.sleep(0.08)
+        if screen.pending_clicks:
+            clicks, screen.pending_clicks = screen.pending_clicks, 0
+            screen.volume_level = await asyncio.to_thread(screen.volume.change, clicks)
+            screen.volume_until = time.monotonic() + 1.5
+
+
 async def run(screen: Screen, fps: float) -> None:
-    await asyncio.gather(follow_music(screen), animate(screen, fps), listen(screen))
+    screen.player.notify = screen.refresh  # players that hear changes live wake us up
+    await asyncio.gather(follow_music(screen), animate(screen, fps), listen(screen),
+                         turn_volume(screen))
 
 
 # --------------------------------------------------------------------------
@@ -353,6 +433,10 @@ def install(args) -> None:
 
     command = [sys.executable, str(Path(__file__).resolve()),
                "--host", args.host, "--linger", args.linger_text, "--fps", str(args.fps)]
+    if args.player:
+        command += ["--player", args.player]
+    if args.reverse_wheel:
+        command += ["--reverse-wheel"]
     lines = [
         "[Unit]",
         "Description=Luca Now Playing for the BUSY Bar",
@@ -405,6 +489,11 @@ def main() -> None:
     ap.add_argument("--linger", default="2m", metavar="TIME",
                     help="how long Luca stays after the music stops: 2m, 5m, 30s, 0 "
                          "(default: 2m)")
+    ap.add_argument("--player", metavar="NAME",
+                    help="Linux: only show this player, e.g. spotify, firefox, vlc "
+                         "(default: whichever is playing)")
+    ap.add_argument("--reverse-wheel", action="store_true",
+                    help="flip which way the wheel turns the volume")
     ap.add_argument("--demo", action="store_true", help="use a pretend playlist")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--install", action="store_true",
@@ -423,12 +512,16 @@ def main() -> None:
     if args.uninstall:
         return uninstall()
 
-    player = media.detect(args.demo)
+    player = media.detect(args.demo, args.player)
     bar_ = BusyBar(args.host, args.token)
-    screen = Screen(bar_, player, args.linger)
+    volume = media.Volume()
+    screen = Screen(bar_, player, args.linger, volume)
+    screen.reverse_wheel = args.reverse_wheel
     print(f"🎵 Listening to: {player.name}")
+    if not volume.available:
+        print("ℹ️  Couldn't find wpctl or pactl, so the wheel won't change the volume.")
     print(f"🐺 Luca appears on the BUSY Bar at {args.host} whenever music plays.")
-    print("   OK = play/pause, Start = next, Back = previous. Ctrl+C to stop.")
+    print("   OK = play/pause, Start = next, Back = previous, wheel = volume. Ctrl+C to stop.")
 
     # systemd stops services with SIGTERM: treat it like Ctrl+C so we clean up.
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
