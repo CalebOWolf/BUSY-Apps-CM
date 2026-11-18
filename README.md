@@ -4,9 +4,10 @@
 
 ### *A cozy little collection of apps I've made for the BUSY Bar*
 
-![Made with love](https://img.shields.io/badge/made%20with-♥-ff4d6d?style=for-the-badge)
-![Device](https://img.shields.io/badge/device-BUSY%20Bar-ff6b35?style=for-the-badge)
-![License](https://img.shields.io/github/license/CalebOWolf/BUSY-Apps-CM?style=for-the-badge&color=8a5cf6)
+![Made with love](https://img.shields.io/badge/made%20with-♥-ff4d6d?style=flat)
+![Device](https://img.shields.io/badge/device-BUSY%20Bar-ff6b35?style=flat)
+![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat&logo=python&logoColor=white)
+![License](https://img.shields.io/github/license/CalebOWolf/BUSY-Apps-CM?style=flat&color=8a5cf6)
 
 </div>
 
