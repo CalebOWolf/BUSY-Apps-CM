@@ -27,7 +27,7 @@
 | **Back** | winks and sends hearts | <img src="preview/wave.gif" width="360" alt="Luca winking, HEY with a heart"> |
 | **Start** | jumps for joy while sparkles pop | <img src="preview/yay.gif" width="360" alt="Luca jumping, YAY!"> |
 | **Wheel** | looks left or right | <img src="preview/look_left.gif" width="360" alt="Luca looking around"> |
-| *nothing for 10 minutes* (`--doze`) | falls asleep under the moon (any press wakes him with a hello) | <img src="preview/sleep.gif" width="360" alt="Luca asleep at night, ZZZ"> |
+| *nothing for 10 minutes* (`--den`) | falls asleep under the moon (any press wakes him with a hello) | <img src="preview/sleep.gif" width="360" alt="Luca asleep at night, ZZZ"> |
 
 The status line in the back screen's window changes too (*chilling*, *AWOOO!*, *partying*, *sleeping*…).
 
@@ -68,22 +68,22 @@ Everything is in `render.py`:
 - `MOODS` / `STATUS`: add your own moods and status lines
 - `BUTTON_MOODS` in `luca_aero.py`: which button does what
 - `--fps`: animation speed (`python luca_aero.py --fps 10`)
-- `--doze`: how long before Luca naps (see the table below)
+- `--den`: how long before Luca naps (see the table below)
 
 Re-run `python render.py` after any change.
 
 ### 🐺 Nap timer
 
-Luca waits **10 minutes** by default. Pick another nap time with `--doze`:
+Luca waits **10 minutes** by default. Pick another nap time with `--den`:
 
 | Nap after | Command |
 | :-- | :-- |
-| 1 minute | `python luca_aero.py --doze 1m` |
-| 2 minutes | `python luca_aero.py --doze 2m` |
-| 5 minutes | `python luca_aero.py --doze 5m` |
+| 1 minute | `python luca_aero.py --den 1m` |
+| 2 minutes | `python luca_aero.py --den 2m` |
+| 5 minutes | `python luca_aero.py --den 5m` |
 | **10 minutes** (default) | `python luca_aero.py` |
 
-Times are in minutes, so `--doze 15` or `--doze 2.5` work too. Add `s` for seconds, like `--doze 30s`.
+Times are in minutes, so `--den 15` or `--den 2.5` work too. Add `s` for seconds, like `--den 30s`.
 
 ## 🔧 How it works
 
