@@ -13,9 +13,9 @@ working as before; Luca only watches.
     Back    show the one before again
     Wheel   flip through recent notifications
 
-Put the bar's selector on OFF (do not disturb), or start a focus round in
-Luca Pack Focus, and Luca holds new notifications quietly, then shows them
-when you switch back or take a break.
+Put the bar's selector on OFF (do not disturb), start a focus round in
+Luca Pack Focus, or go live / record with Luca On Air, and Luca holds new
+notifications quietly, then shows them when you're done.
 
     python notify_den.py                  # BUSY Bar on USB (10.0.4.20)
     python notify_den.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
@@ -54,18 +54,23 @@ HOLD_FRAMES = 12        # pause before a long message starts scrolling
 ALERT_SECONDS = 1.5     # how long Luca stays perked up before he reads
 MAX_WAITING = 5         # keep only the newest few while you're away or busy
 MAX_SECONDS = 30        # the longest one notification stays up
-# Luca Pack Focus writes this while you're in a focus round.
-FOCUS_FILE = Path(os.environ.get("XDG_RUNTIME_DIR")
-                  or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")) / "luca-focus.json"
+# Luca Pack Focus and Luca On Air write these while you're focusing or on air.
+_SHARED_DIR = Path(os.environ.get("XDG_RUNTIME_DIR")
+                   or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"))
+QUIET_FILES = {"focus": (_SHARED_DIR / "luca-focus.json", "focusing"),
+               "onair": (_SHARED_DIR / "luca-onair.json", "on_air")}
 
 
-def focusing() -> bool:
-    """Is Luca Pack Focus running a focus round right now?"""
-    try:
-        data = json.loads(FOCUS_FILE.read_text())
-    except (OSError, ValueError):
-        return False
-    return bool(data.get("focusing")) and time.time() - data.get("updated", 0) < 5
+def quiet_reason() -> str | None:
+    """"focus" during a focus round, "onair" while live or recording, else None."""
+    for reason, (path, flag) in QUIET_FILES.items():
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if data.get(flag) and time.time() - data.get("updated", 0) < 5:
+            return reason
+    return None
 
 
 class Den:
@@ -80,7 +85,7 @@ class Den:
         self.online = False
         self.on_bar = False
         self.dnd = False
-        self.focus = False          # Luca Pack Focus is in a focus round
+        self.focus = None           # "focus" or "onair" while another app wants quiet
         self.slot = 0
         self.loop = 0
         self.offset = 0
@@ -91,7 +96,7 @@ class Den:
 
     @property
     def hushed(self) -> bool:
-        return self.dnd or self.focus
+        return self.dnd or bool(self.focus)
 
     # -- notifications in -----------------------------------------------------
     def arrive(self, note) -> None:
@@ -100,7 +105,8 @@ class Den:
         self.history.appendleft(note)
         self.waiting.append(note)
         where = (" (held: do not disturb)" if self.dnd else
-                 " (held: you're focusing)" if self.focus else "")
+                 " (held: you're focusing)" if self.focus == "focus" else
+                 " (held: you're on air)" if self.focus == "onair" else "")
         print(f"  🔔 {note.app}: {note.summary}{where}")
         self.wake.set()
 
@@ -233,13 +239,17 @@ async def listen(den: Den) -> None:
 
 
 async def watch_focus(den: Den) -> None:
-    """Hold notifications while Luca Pack Focus is in a focus round."""
+    """Hold notifications during Pack Focus rounds and while On Air is live or recording."""
     while True:
-        now = await asyncio.to_thread(focusing)
+        now = await asyncio.to_thread(quiet_reason)
         if now != den.focus:
+            if now == "focus":
+                print("  🌕 Focus round: holding notifications")
+            elif now == "onair":
+                print("  🔴 On air: holding notifications")
+            else:
+                print(f"  ☀️  All clear! {len(den.waiting)} waiting")
             den.focus = now
-            print("  🌕 Focus round: holding notifications" if now
-                  else f"  ☀️  Break time! {len(den.waiting)} waiting")
             den.wake.set()
         await asyncio.sleep(1)
 

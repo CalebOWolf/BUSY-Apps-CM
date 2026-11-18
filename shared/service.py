@@ -52,7 +52,9 @@ def check(requirements: list[tuple[str, bool]], required: set[str] = frozenset()
 
 
 def install(name: str, description: str, command: list[str], token: str | None = None,
-            done_message: str = "") -> None:
+            done_message: str = "", env: dict[str, str] | None = None) -> None:
+    """`env` adds more private settings (like a password) the same way as the
+    token: into the service file only, which only you can read."""
     require_systemd()
     lines = [
         "[Unit]",
@@ -64,6 +66,9 @@ def install(name: str, description: str, command: list[str], token: str | None =
     ]
     if token:
         lines.append("Environment=" + quote(f"BUSYBAR_TOKEN={token}"))
+    for key, value in (env or {}).items():
+        if value:
+            lines.append("Environment=" + quote(f"{key}={value}"))
     lines += ["Restart=on-failure", "RestartSec=10", "", "[Install]", "WantedBy=default.target", ""]
 
     path = unit_path(name)

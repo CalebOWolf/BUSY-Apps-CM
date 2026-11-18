@@ -49,7 +49,8 @@ Turn the bar's selector to **OFF** and Luca holds new notifications quietly (the
 shows how many are waiting). Switch back and he shows you what you missed (the newest 5).
 
 Running [🌕 Luca Pack Focus](../luca-pack-focus/)? Notifications are also held during each
-**focus round**, and they show up when your break starts.
+**focus round**, and they show up when your break starts. With [🔴 Luca On Air](../luca-on-air/),
+they're held while you're **live or recording** (in case the bar is on camera).
 
 ## 🔒 Privacy and filters
 
