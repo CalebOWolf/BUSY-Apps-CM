@@ -19,6 +19,14 @@
 | **Front** (72×16 RGB LEDs) | Luca in mint headphones on a glossy glass tile, bopping to the beat. The **title and artist** scroll across an Aero sky with drifting bubbles, and a mint **progress bar** fills up as the song plays |
 | **Back** (160×80, 16 greys) | **Luca Player**, a Windows 7-style media player window with the **album art** (or Luca's portrait when there's none), the song, artist and album, a progress bar with the time, and the classic glossy play/pause orb |
 
+### ✨ Extra sparkle
+
+<img src="preview/effects.gif" alt="Equalizer bars bouncing behind the title, then a new title sliding in with sparkles while Luca hops" width="720">
+
+- **Equalizer bars** bounce behind the title to the real sound (needs `cava`, see below)
+- **When the song changes,** the new title glides in from the right, little stars twinkle
+  around it, and Luca does a happy hop
+
 Luca only shows up while music plays. When you pause, the text dims and stops scrolling, and he
 waits **2 minutes** in case you come back. Then he steps aside and the bar goes back to its
 usual screens, until you press play again.
@@ -94,8 +102,10 @@ It runs as a **systemd user service**.
 On Arch (btw), install the system bits first:
 
 ```bash
-sudo pacman -S python playerctl
+sudo pacman -S python playerctl cava
 ```
+
+`cava` is optional: it powers the equalizer bars, and Luca works without it.
 
 Arch doesn't let `pip` install into the system Python, so give Luca a little virtual environment:
 
@@ -107,8 +117,8 @@ python -m venv ~/.venvs/luca
 ~/.venvs/luca/bin/pip install pillow busylib
 ```
 
-Then install the service, using that Python. Add `--host`, `--token`, `--linger`, `--player`
-or `--reverse-wheel` here if you use them; they're saved into the service:
+Then install the service, using that Python. Add `--host`, `--token`, `--linger`, `--player`,
+`--reverse-wheel` or `--visualizer` here if you use them; they're saved into the service:
 
 ```bash
 ~/.venvs/luca/bin/python now_playing.py --install
@@ -146,6 +156,8 @@ app from here.
 - `--linger`: how long Luca stays after the music stops (default 2m)
 - `--player`: only show one app (Linux)
 - `--reverse-wheel`: flip the volume wheel
+- `--visualizer off`: hide the equalizer bars (`auto`, the default, shows them when `cava` is installed)
+- `SPARKLES` / `SPARKLE_COLORS` in `now_playing.py`: where the song-change stars twinkle
 - `python art.py` redraws the previews in `preview/`
 
 Song titles are shown in capital pixel letters. Accents are simplified (*Café* shows as
@@ -161,7 +173,9 @@ uploads them through the BUSY Bar's local HTTP API (`/api/assets/upload`). About
 second it redraws the screen with `/api/display/draw`: the sky, the title strip slid
 sideways to scroll it, Luca's tile on top, and the progress bars and time as live
 rectangles and text. Album art comes from the player (a file or a web address), and it's
-converted to the back screen's 16 greys. Button presses and wheel turns come from the bar's status stream (`/api/status/ws`,
+converted to the back screen's 16 greys. The equalizer comes from `cava` in raw mode
+(`visualizer.py`): 13 bar heights, 30 times a second, drawn as see-through gradient
+rectangles behind the title. Button presses and wheel turns come from the bar's status stream (`/api/status/ws`,
 via `busylib`).
 
 ## 💖 Credits

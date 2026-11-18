@@ -46,8 +46,13 @@ from PIL import Image
 
 import art
 import media
+import visualizer
 
 APP = "luca_now_playing"
+SLIDE_FRAMES = 8          # how long a new title takes to slide in
+SPARKLE_FRAMES = 12       # how long the song-change sparkles last
+SPARKLES = [(24, 2, 0), (40, 12, 2), (55, 1, 4), (68, 10, 1), (33, 7, 5), (62, 5, 3)]
+SPARKLE_COLORS = ["#FFF05AFF", "#FFFFFFFF", "#78FFC8FF", "#FF78C8FF"]
 BUTTON_ACTIONS = {"ok": "toggle", "start": "next", "back": "previous"}
 UNIT_NAME = "luca-now-playing.service"
 
@@ -143,6 +148,9 @@ class Screen:
         self.volume_until = 0.0            # show the volume pop-up until then
         self.covers: dict[str, Image.Image | None] = {}
         self.reverse_wheel = False
+        self.viz: visualizer.Visualizer | None = None
+        self.slide: int | None = None      # frames into a new title sliding in
+        self.sparkle: int | None = None    # frames into the song-change sparkles
         self.track = media.NOTHING
         self.last_playing = float("-inf")  # when music was last heard playing
         self.online = False                # artwork uploaded and the bar answering
@@ -194,10 +202,14 @@ class Screen:
         self.bar.upload_image(f"strip_{slot}.png", strip)
         self.bar.upload_image(f"back_{slot}.png", art.back_screen(
             track.title, track.artist, track.album, track.playing, self.cover(track.art_url)))
+        had_song = self.shown_key is not None and bool(self.shown_key[0])
         new_song = self.shown_key is None or self.shown_key[:3] != track.key[:3]
         self.slot, self.strip_loop, self.shown_key = slot, loop, track.key
         if new_song:
             self.offset, self.hold = 0, 15
+            if had_song and track.active:  # a new song: slide in, sparkle, hop!
+                self.slide, self.sparkle = 0, 0
+                self.hop_until = time.monotonic() + 1.2
 
     def elements(self) -> list[dict]:
         t = self.track
@@ -220,9 +232,18 @@ class Screen:
                 if self.offset >= self.strip_loop:
                     self.offset, self.hold = 0, 15
 
-        els = [
-            image("sky", f"bg_{self.frame % art.BG_FRAMES:02d}.png", 0, 0),
-            image("song", f"strip_{self.slot}.png", art.TEXT_X - self.offset, art.TEXT_Y),
+        # A new title glides in from the right edge, easing to a stop.
+        song_x = art.TEXT_X - self.offset
+        if self.slide is not None:
+            k = min(self.slide / SLIDE_FRAMES, 1.0)
+            song_x = art.TEXT_X + round((art.FRONT_W - art.TEXT_X) * (1 - k) ** 2)
+            self.slide = None if self.slide >= SLIDE_FRAMES else self.slide + 1
+
+        els = [image("sky", f"bg_{self.frame % art.BG_FRAMES:02d}.png", 0, 0)]
+        if self.viz and self.viz.enabled and t.playing:
+            els += self.equalizer()
+        els += [
+            image("song", f"strip_{self.slot}.png", song_x, art.TEXT_Y),
             image("luca", f"tile_{pose}_{n}.png", 0, 0),
             image("window", f"back_{self.slot}.png", 0, 0, display="back"),
         ]
@@ -239,8 +260,36 @@ class Screen:
             els.append({"id": "time", "type": "text", "display": "back", "font": "small",
                         "text": f"{clock(t.position_now())} / {clock(t.duration)}",
                         "color": "#282828FF", "x": tx, "y": ty, "align": "top_right"})
+        if self.sparkle is not None:
+            els += self.sparkles()
         if now < self.volume_until:
             els += self.volume_popup()
+        return els
+
+    def equalizer(self) -> list[dict]:
+        """Glassy equalizer bars rising behind the title, driven by cava."""
+        els = []
+        for i, level in enumerate(self.viz.levels):
+            if level:
+                els.append({"id": f"eq{i}", "type": "rectangle", "display": "front",
+                            "x": art.TEXT_X + i * 4, "y": art.BAR_Y - level,
+                            "width": 3, "height": level, "fill": "gradient_v",
+                            "fill_colors": ["#F0FFFFE0", "#50F0BEB0"], "border_width": 0})
+        return els
+
+    def sparkles(self) -> list[dict]:
+        """Little twinkling stars that pop around a new title."""
+        els = []
+        for i, (x, y, delay) in enumerate(SPARKLES):
+            age = self.sparkle - delay
+            if not 0 <= age < 6:
+                continue
+            r = (0, 1, 2, 1, 1, 0)[age]
+            color = SPARKLE_COLORS[(i + age) % len(SPARKLE_COLORS)]
+            els.append(bar(f"spark{i}h", x - r, y, 2 * r + 1, 1, color))
+            if r:
+                els.append(bar(f"spark{i}v", x, y - r, 1, 2 * r + 1, color))
+        self.sparkle = None if self.sparkle >= SPARKLE_FRAMES else self.sparkle + 1
         return els
 
     def volume_popup(self) -> list[dict]:
@@ -390,7 +439,7 @@ async def turn_volume(screen: Screen) -> None:
 async def run(screen: Screen, fps: float) -> None:
     screen.player.notify = screen.refresh  # players that hear changes live wake us up
     await asyncio.gather(follow_music(screen), animate(screen, fps), listen(screen),
-                         turn_volume(screen))
+                         turn_volume(screen), screen.viz.run())
 
 
 # --------------------------------------------------------------------------
@@ -437,6 +486,8 @@ def install(args) -> None:
         command += ["--player", args.player]
     if args.reverse_wheel:
         command += ["--reverse-wheel"]
+    if args.visualizer != "auto":
+        command += ["--visualizer", args.visualizer]
     lines = [
         "[Unit]",
         "Description=Luca Now Playing for the BUSY Bar",
@@ -492,6 +543,9 @@ def main() -> None:
     ap.add_argument("--player", metavar="NAME",
                     help="Linux: only show this player, e.g. spotify, firefox, vlc "
                          "(default: whichever is playing)")
+    ap.add_argument("--visualizer", choices=["auto", "on", "off"], default="auto",
+                    help="equalizer bars behind the title, using cava "
+                         "(default: auto, on when cava is installed)")
     ap.add_argument("--reverse-wheel", action="store_true",
                     help="flip which way the wheel turns the volume")
     ap.add_argument("--demo", action="store_true", help="use a pretend playlist")
@@ -517,9 +571,14 @@ def main() -> None:
     volume = media.Volume()
     screen = Screen(bar_, player, args.linger, volume)
     screen.reverse_wheel = args.reverse_wheel
+    screen.viz = visualizer.Visualizer(args.visualizer)
     print(f"🎵 Listening to: {player.name}")
     if not volume.available:
         print("ℹ️  Couldn't find wpctl or pactl, so the wheel won't change the volume.")
+    if screen.viz.enabled:
+        print("📊 Visualizer on (cava)")
+    elif args.visualizer == "auto":
+        print("ℹ️  Install cava (sudo pacman -S cava) for equalizer bars behind the title.")
     print(f"🐺 Luca appears on the BUSY Bar at {args.host} whenever music plays.")
     print("   OK = play/pause, Start = next, Back = previous, wheel = volume. Ctrl+C to stop.")
 
