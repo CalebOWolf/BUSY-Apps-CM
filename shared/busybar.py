@@ -70,8 +70,12 @@ class BusyBar:
         image.save(buf, "PNG")
         self.upload(filename, buf.getvalue())
 
-    def draw(self, elements: list[dict], priority: int = 50) -> None:
+    def draw(self, elements: list[dict], priority: int = 50, led: str | None = None) -> None:
+        """Show these elements. `led` ("#RRGGBBAA") also lights the bar's
+        notification LED in that color."""
         payload = {"application_name": self.app, "priority": priority, "elements": elements}
+        if led:
+            payload["led_notification_color"] = led
         self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
                    content_type="application/json")
 
@@ -166,3 +170,9 @@ def is_press(event: Any) -> bool:
 
 def is_wheel(event: Any) -> bool:
     return hasattr(event, "delta") and bool(event.delta)
+
+
+def is_selector(event: Any) -> bool:
+    """The bar's selector moved; `.position` is "busy", "custom", "off"
+    (do not disturb), "apps" or "settings"."""
+    return hasattr(event, "position")
