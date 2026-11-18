@@ -13,7 +13,7 @@ shows the Aero window on the back, and makes Luca react to the bar's controls:
     python render.py                      # once, to build the artwork
     python luca_aero.py                   # BUSY Bar on USB (10.0.4.20)
     python luca_aero.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
-    python luca_aero.py --howl 5m         # nap after 5 minutes (default 10m)
+    python luca_aero.py --doze 5m         # nap after 5 minutes (default 10m)
 
 Press Ctrl+C to stop; the app clears its screens on the way out.
 Button reactions need the official `busylib` package (pip install busylib).
@@ -174,7 +174,7 @@ def main() -> None:
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
     ap.add_argument("--token", help="API key, if HTTP access is set to 'key' mode")
     ap.add_argument("--fps", type=float, default=7, help="animation speed")
-    ap.add_argument("--howl", type=nap_time, default="10m", metavar="TIME",
+    ap.add_argument("--doze", type=nap_time, default="10m", metavar="TIME",
                     help="nap after this long without a press: 1m, 2m, 5m, 10m, "
                          "or any number of minutes; add 's' for seconds (default: 10m)")
     args = ap.parse_args()
@@ -193,7 +193,7 @@ def main() -> None:
     print("✨ Luca is live! OK = howl, Back = hey, Start = yay, wheel = look around.")
     print("   Press Ctrl+C to stop.")
     try:
-        asyncio.run(run(bar, Luca(manifest, args.howl), args.fps))
+        asyncio.run(run(bar, Luca(manifest, args.doze), args.fps))
     except KeyboardInterrupt:
         pass
     finally:
