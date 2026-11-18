@@ -242,8 +242,8 @@ def main() -> None:
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
     ap.add_argument("--token", default=os.environ.get("BUSYBAR_TOKEN"),
                     help="API key, if HTTP access is set to 'key' mode (or set BUSYBAR_TOKEN)")
-    ap.add_argument("--show", type=float, default=8, metavar="SECONDS",
-                    help="show each notification at least this long (default 8)")
+    ap.add_argument("--show", type=float, default=7, metavar="SECONDS",
+                    help="show each notification at least this long (default 7)")
     ap.add_argument("--private", action="store_true",
                     help="show only which app it's from, not the message")
     ap.add_argument("--ignore", default="", metavar="APPS",

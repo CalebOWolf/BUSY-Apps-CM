@@ -23,7 +23,7 @@ finished download), it shows up on the bar too:
 | **Back** (160×80, 16 greys) | **Luca Inbox**, a Windows 7-style window listing your latest notifications with app names and times, with the current one highlighted |
 | **Notification light** | The bar's LED glows in the app's color: Discord blurple, Telegram blue, Firefox orange, and so on |
 
-Each notification stays up for at least 8 seconds (`--show`), or long enough to scroll all
+Each notification stays up for at least 7 seconds (`--show`), or long enough to scroll all
 the way through, up to 30 seconds. When nothing's left, Luca steps aside and the bar goes
 back to whatever it was showing.
 
