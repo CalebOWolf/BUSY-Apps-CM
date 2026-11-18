@@ -26,6 +26,7 @@ is where those ideas live.
 | App | What it does | Status |
 | :-- | :----------- | :----: |
 | [🐺 Luca Wood Aero](luca-wood-aero/) | My fursona Luca Wood in glossy Frutiger Aero / Windows 7 style, with bubbles on the front and an Aero window on the back | ✅ |
+| [🎵 Luca Now Playing](luca-now-playing/) | Shows the song playing on your computer in glossy Aero style, with Luca bopping along in headphones and the buttons controlling your music | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it.
