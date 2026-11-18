@@ -159,8 +159,8 @@ def main() -> None:
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
     ap.add_argument("--token", help="API key, if HTTP access is set to 'key' mode")
     ap.add_argument("--fps", type=float, default=7, help="animation speed")
-    ap.add_argument("--sleep-after", type=float, default=60, metavar="SECONDS",
-                    help="nap after this long without a press (default: 60)")
+    ap.add_argument("--sleep-after", type=float, default=600, metavar="SECONDS",
+                    help="nap after this long without a press (default: 600, i.e. 10 minutes)")
     args = ap.parse_args()
 
     manifest_file = BUILD / "manifest.json"

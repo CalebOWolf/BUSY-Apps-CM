@@ -27,7 +27,7 @@
 | **Back** | winks and sends hearts | <img src="preview/wave.gif" width="360" alt="Luca winking, HEY with a heart"> |
 | **Start** | jumps for joy while sparkles pop | <img src="preview/yay.gif" width="360" alt="Luca jumping, YAY!"> |
 | **Wheel** | looks left or right | <img src="preview/look_left.gif" width="360" alt="Luca looking around"> |
-| *nothing for a minute* | falls asleep under the moon (any press wakes him with a hello) | <img src="preview/sleep.gif" width="360" alt="Luca asleep at night, ZZZ"> |
+| *nothing for 10 minutes* | falls asleep under the moon (any press wakes him with a hello) | <img src="preview/sleep.gif" width="360" alt="Luca asleep at night, ZZZ"> |
 
 The status line in the back screen's window changes too (*chilling*, *AWOOO!*, *partying*, *sleeping*…).
 
@@ -68,7 +68,7 @@ Everything is in `render.py`:
 - `MOODS` / `STATUS`: add your own moods and status lines
 - `BUTTON_MOODS` in `luca_aero.py`: which button does what
 - `--fps`: animation speed (`python luca_aero.py --fps 10`)
-- `--sleep-after`: seconds before Luca naps (`python luca_aero.py --sleep-after 300`)
+- `--sleep-after`: seconds before Luca naps (default 600 = 10 minutes, e.g. `--sleep-after 300` for 5)
 
 Re-run `python render.py` after any change.
 
