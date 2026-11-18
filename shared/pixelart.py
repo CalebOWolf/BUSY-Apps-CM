@@ -4,6 +4,7 @@ Pixel art helpers shared by every app in this repo.
   GLYPHS, draw_text(), text_width(), to_font_text()
                  a crisp 5x7 uppercase pixel font for the 16-pixel LED strip
   lerp()         blend two colors
+  aero_sky()     a glossy Aero sky gradient
   ui_font()      a small smooth font for the back screen
   led_preview()  upscale a frame as round LEDs, for previews
 """
@@ -70,6 +71,8 @@ _FONT_SRC = {
     "*": "..... X.X.X .XXX. XXXXX .XXX. X.X.X .....",
     "_": "..... ..... ..... ..... ..... ..... XXXXX",
     "♪": "..XX. ..X.X ..X.. ..X.. XXX.. XXX.. .....",
+    "%": "XX..X XX..X ...X. ..X.. .X... X..XX X..XX",
+    "°": ".X. X.X .X. ... ... ... ...",
 }
 GLYPHS = {ch: src.split() for ch, src in _FONT_SRC.items()}
 SPACE_W = 3
@@ -115,6 +118,19 @@ def draw_text(img: Image.Image, text: str, x: int, y: int,
 def lerp(a, b, t):
     """Blend color a toward b by t (0..1)."""
     return tuple(int(round(x + (y - x) * t)) for x, y in zip(a, b))
+
+
+def aero_sky(w: int, h: int, top=(120, 215, 255), bottom=(0, 95, 200),
+             shine: float = 0.35) -> Image.Image:
+    """A Frutiger Aero sky: a blue gradient with a glassy highlight on the top half."""
+    img = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(img)
+    for y in range(h):
+        c = lerp(top, bottom, y / max(h - 1, 1))
+        if y < h // 2:
+            c = lerp(c, (255, 255, 255), shine * (1 - y / (h / 2)))
+        d.line([(0, y), (w - 1, y)], fill=c)
+    return img
 
 
 def ui_font(size: int):
