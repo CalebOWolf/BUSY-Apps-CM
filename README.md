@@ -24,7 +24,7 @@ is where those ideas live.
 
 | App | What it does | Status |
 | :-- | :----------- | :----: |
-| *Coming soon…* | The first app is on its way ☕ | 🛠️ |
+| [🐺 Luca Wood Aero](luca-wood-aero/) | My fursona Luca Wood in glossy Frutiger Aero / Windows 7 style, with bubbles on the front and an Aero window on the back | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it.
