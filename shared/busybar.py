@@ -5,6 +5,7 @@ Talking to the BUSY Bar, shared by every app in this repo.
   BarOffline     raised when the bar doesn't answer, so apps can wait and retry
   image(), rect(), text()   build display elements
   input_events() follow the bar's buttons and wheel (needs busylib)
+  Presence       which of our apps is on top, so only that one answers the buttons
 
 Each app puts this folder on its import path with:
 
@@ -16,11 +17,15 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
+import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 USB_HOST = "10.0.4.20"
@@ -38,6 +43,7 @@ class BusyBar:
         self.app = app
         self.base = f"http://{host}/api"
         self.token = token
+        self.presence = Presence(app, 50)
 
     def _call(self, method: str, path: str, params: dict | None = None,
               body: bytes | None = None, content_type: str | None = None) -> dict:
@@ -78,9 +84,16 @@ class BusyBar:
             payload["led_notification_color"] = led
         self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
                    content_type="application/json")
+        self.presence.priority = priority
+        self.presence.beat()
 
     def clear(self) -> None:
+        self.presence.leave()
         self._call("DELETE", "/display/draw", params={"application_name": self.app})
+
+    def answers_buttons(self) -> bool:
+        """True while this app is on the bar and no higher-priority app of ours is."""
+        return self.presence.showing() and self.presence.on_top()
 
 
 # --------------------------------------------------------------------------
@@ -120,7 +133,13 @@ async def input_events(bar: BusyBar) -> AsyncIterator[Any]:
     reconnecting quietly whenever the bar goes away.
 
     Events are busylib's: a button event has `.button` ("ok", "back",
-    "start"), `.action` and `.is_press`; a wheel event has `.delta`.
+    "start"), `.action` and `.is_press`; a wheel event has `.delta`; a
+    selector event has `.position`.
+
+    Buttons and wheel turns only come through while this app is on the bar
+    and on top (see Presence), so two apps never both act on one press.
+    Selector moves always come through.
+
     Without busylib installed this prints a hint and yields nothing.
     """
     try:
@@ -161,7 +180,9 @@ async def input_events(bar: BusyBar) -> AsyncIterator[Any]:
     threading.Thread(target=lambda: asyncio.run(pump()), daemon=True,
                      name="busybar-input").start()
     while True:
-        yield await queue.get()
+        event = await queue.get()
+        if is_selector(event) or bar.answers_buttons():
+            yield event
 
 
 def is_press(event: Any) -> bool:
@@ -176,3 +197,65 @@ def is_selector(event: Any) -> bool:
     """The bar's selector moved; `.position` is "busy", "custom", "off"
     (do not disturb), "apps" or "settings"."""
     return hasattr(event, "position")
+
+
+# --------------------------------------------------------------------------
+# Who's on top
+# --------------------------------------------------------------------------
+PRESENCE_DIR = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()) / "luca-bar"
+FRESH = 2.5  # seconds: an app that hasn't drawn for this long is no longer on screen
+
+
+class Presence:
+    """
+    Every app hears every button press, but only the one you can see should
+    answer. While an app is on the bar it calls beat() after each draw; before
+    acting on a press it asks on_top(), which is False while another of our
+    apps with a higher priority is showing.
+    """
+
+    def __init__(self, app: str, priority: int):
+        self.app, self.priority = app, priority
+        self.path = PRESENCE_DIR / f"{app}.json"
+        self._last = 0.0
+        self._drawn = 0.0
+
+    def beat(self) -> None:
+        now = time.time()
+        self._drawn = now
+        if now - self._last < 0.5:
+            return
+        self._last = now
+        try:
+            PRESENCE_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"priority": self.priority, "updated": now}))
+            tmp.replace(self.path)
+        except OSError:
+            pass
+
+    def showing(self) -> bool:
+        """Has this app drawn on the bar in the last few seconds?"""
+        return time.time() - self._drawn < FRESH
+
+    def leave(self) -> None:
+        self._last = self._drawn = 0.0
+        try:
+            self.path.unlink()
+        except OSError:
+            pass
+
+    def on_top(self) -> bool:
+        now = time.time()
+        try:
+            others = [p for p in PRESENCE_DIR.glob("*.json") if p != self.path]
+        except OSError:
+            return True
+        for p in others:
+            try:
+                data = json.loads(p.read_text())
+            except (OSError, ValueError):
+                continue
+            if now - data.get("updated", 0) < FRESH and data.get("priority", 0) > self.priority:
+                return False
+        return True

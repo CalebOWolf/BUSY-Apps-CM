@@ -48,6 +48,9 @@ The buttons only do this while Luca is showing a notification. Otherwise they're
 Turn the bar's selector to **OFF** and Luca holds new notifications quietly (the inbox title
 shows how many are waiting). Switch back and he shows you what you missed (the newest 5).
 
+Running [🌕 Luca Pack Focus](../luca-pack-focus/)? Notifications are also held during each
+**focus round**, and they show up when your break starts.
+
 ## 🔒 Privacy and filters
 
 The bar sits on your desk where others can see it, so:

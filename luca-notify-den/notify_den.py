@@ -13,8 +13,9 @@ working as before; Luca only watches.
     Back    show the one before again
     Wheel   flip through recent notifications
 
-Put the bar's selector on OFF (do not disturb) and Luca holds new
-notifications quietly, then shows them when you switch back.
+Put the bar's selector on OFF (do not disturb), or start a focus round in
+Luca Pack Focus, and Luca holds new notifications quietly, then shows them
+when you switch back or take a break.
 
     python notify_den.py                  # BUSY Bar on USB (10.0.4.20)
     python notify_den.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import signal
 import sys
@@ -52,6 +54,18 @@ HOLD_FRAMES = 12        # pause before a long message starts scrolling
 ALERT_SECONDS = 1.5     # how long Luca stays perked up before he reads
 MAX_WAITING = 5         # keep only the newest few while you're away or busy
 MAX_SECONDS = 30        # the longest one notification stays up
+# Luca Pack Focus writes this while you're in a focus round.
+FOCUS_FILE = Path(os.environ.get("XDG_RUNTIME_DIR")
+                  or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")) / "luca-focus.json"
+
+
+def focusing() -> bool:
+    """Is Luca Pack Focus running a focus round right now?"""
+    try:
+        data = json.loads(FOCUS_FILE.read_text())
+    except (OSError, ValueError):
+        return False
+    return bool(data.get("focusing")) and time.time() - data.get("updated", 0) < 5
 
 
 class Den:
@@ -66,6 +80,7 @@ class Den:
         self.online = False
         self.on_bar = False
         self.dnd = False
+        self.focus = False          # Luca Pack Focus is in a focus round
         self.slot = 0
         self.loop = 0
         self.offset = 0
@@ -74,13 +89,18 @@ class Den:
         self.frame = 0
         self.wake = asyncio.Event()
 
+    @property
+    def hushed(self) -> bool:
+        return self.dnd or self.focus
+
     # -- notifications in -----------------------------------------------------
     def arrive(self, note) -> None:
         if note.app.strip().lower() in self.ignore:
             return
         self.history.appendleft(note)
         self.waiting.append(note)
-        where = " (held: do not disturb)" if self.dnd else ""
+        where = (" (held: do not disturb)" if self.dnd else
+                 " (held: you're focusing)" if self.focus else "")
         print(f"  🔔 {note.app}: {note.summary}{where}")
         self.wake.set()
 
@@ -97,7 +117,7 @@ class Den:
         strip, loop = art.strip(note, self.private)
         self.bar.upload_image(f"strip_{slot}.png", strip)
         self.bar.upload_image(f"back_{slot}.png", art.back_screen(
-            list(self.history), note, self.private, len(self.waiting) if self.dnd else 0))
+            list(self.history), note, self.private, len(self.waiting) if self.hushed else 0))
         self.slot, self.loop, self.offset, self.hold = slot, loop, 0, HOLD_FRAMES
         self.current, self.shown_at, self.light = note, time.monotonic(), True
 
@@ -154,7 +174,7 @@ async def animate(den: Den) -> None:
         try:
             if den.current and time.monotonic() - den.shown_at >= den.duration():
                 den.current = None  # done reading this one
-            if den.current is None and den.waiting and not den.dnd:
+            if den.current is None and den.waiting and not den.hushed:
                 if not den.online:
                     await asyncio.to_thread(den.upload_static)
                     den.online, retry = True, 2
@@ -212,8 +232,20 @@ async def listen(den: Den) -> None:
             den.wake.set()
 
 
+async def watch_focus(den: Den) -> None:
+    """Hold notifications while Luca Pack Focus is in a focus round."""
+    while True:
+        now = await asyncio.to_thread(focusing)
+        if now != den.focus:
+            den.focus = now
+            print("  🌕 Focus round: holding notifications" if now
+                  else f"  ☀️  Break time! {len(den.waiting)} waiting")
+            den.wake.set()
+        await asyncio.sleep(1)
+
+
 async def run(den: Den, source) -> None:
-    await asyncio.gather(collect(den, source), animate(den), listen(den))
+    await asyncio.gather(collect(den, source), animate(den), listen(den), watch_focus(den))
 
 
 def install(args) -> None:
