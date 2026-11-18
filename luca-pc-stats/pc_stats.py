@@ -37,6 +37,7 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
 import service  # noqa: E402
+from turns import TurnTaker  # noqa: E402
 import stats  # noqa: E402
 from busybar import (BarOffline, BusyBar, image, input_events, is_press,  # noqa: E402
                      is_wheel, rect)
@@ -220,8 +221,12 @@ async def read_stats(app: App) -> None:
 
 async def animate(app: App, fps: float) -> None:
     frame, retry = 0, 2
+    turn = TurnTaker(APP, app.bar)
     while True:
         try:
+            if not await asyncio.to_thread(turn.check):
+                await asyncio.sleep(0.5)  # another app's turn (Luca's Den)
+                continue
             if not app.online:
                 await asyncio.to_thread(app.upload_static)
                 await asyncio.to_thread(app.upload_back)
