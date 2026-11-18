@@ -33,6 +33,7 @@ is where those ideas live.
 | [🌕 Luca Pack Focus](luca-pack-focus/) | A Pomodoro-style focus timer: a moon waxes as you focus, Luca howls when it's full, sunset breaks, and notifications wait until your break | ✅ |
 | [🕰️ Luca Aero Clock](luca-aero-clock/) | A glossy desk clock with big digits, a sky that follows the real sun and moon, Luca's mood through the day, and a Windows 7 clock gadget on the back | ✅ |
 | [🔴 Luca On Air](luca-on-air/) | An ON AIR sign that lights up by itself when OBS is live or recording, you're in a call, or your camera is on, with Luca in a gaming headset | ✅ |
+| [💬 Luca Discord](luca-discord/) | Discord on the bar: your voice call with who's talking, mute status (OK mutes you), and new messages, in glossy blurple Aero | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it. The code they share for talking to the bar lives in [`shared/`](shared/).
