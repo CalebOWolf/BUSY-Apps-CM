@@ -1,20 +1,27 @@
 """
 Luca Wood Aero 🐺, a Frutiger Aero / Windows 7 style app for the BUSY Bar.
 
-Uploads the artwork from build/ to the bar, then animates the front strip
-(drifting bubbles, bouncing Luca) and shows the Aero window on the back.
+Uploads the artwork from build/ to the bar, animates the front strip and
+shows the Aero window on the back, and makes Luca react to the bar's controls:
+
+    OK      Luca howls  "AWOOO!"
+    Back    Luca winks  "HEY ♥"
+    Start   Luca jumps  "YAY!"
+    Wheel   Luca looks left / right
+    (idle)  after a while Luca falls asleep under the moon; any press wakes him
 
     python render.py                      # once, to build the artwork
     python luca_aero.py                   # BUSY Bar on USB (10.0.4.20)
     python luca_aero.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
 
 Press Ctrl+C to stop; the app clears its screens on the way out.
-Needs only the Python standard library at runtime.
+Button reactions need the official `busylib` package (pip install busylib).
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import time
 import urllib.error
@@ -25,9 +32,13 @@ from pathlib import Path
 APP = "luca_wood_aero"
 BUILD = Path(__file__).parent / "build"
 
+# What each control makes Luca do.
+BUTTON_MOODS = {"ok": "howl", "back": "wave", "start": "yay"}
+
 
 class BusyBar:
     def __init__(self, host: str, token: str | None = None):
+        self.host = host
         self.base = f"http://{host}/api"
         self.token = token
 
@@ -63,36 +74,110 @@ class BusyBar:
         self._call("DELETE", "/display/draw", params={"application_name": APP})
 
 
+class Luca:
+    """Which mood Luca is in and which frame comes next."""
+
+    def __init__(self, manifest: dict, sleep_after: float):
+        self.manifest = manifest
+        self.sleep_after = sleep_after
+        self.last_input = time.monotonic()
+        self.set("idle")
+
+    def set(self, mood: str) -> None:
+        self.mood, self.frame = mood, 0
+
+    def react(self, mood: str) -> None:
+        self.last_input = time.monotonic()
+        # Waking up from a nap always starts with a hello.
+        self.set("wave" if self.mood == "sleep" else mood)
+
+    def next_frame(self) -> tuple[str, str]:
+        m = self.manifest[self.mood]
+        if self.frame >= len(m["frames"]):
+            if m["loop"]:
+                self.frame = 0
+            else:  # a reaction finished, back to chilling
+                self.set("idle")
+                m = self.manifest["idle"]
+        if self.mood == "idle" and time.monotonic() - self.last_input > self.sleep_after:
+            self.set("sleep")
+            m = self.manifest["sleep"]
+        name = m["frames"][self.frame]
+        self.frame += 1
+        return name, m["back"]
+
+
+async def animate(bar: BusyBar, luca: Luca, fps: float) -> None:
+    while True:
+        front, back = luca.next_frame()
+        await asyncio.to_thread(bar.draw, [
+            {"id": "sky", "type": "image", "path": front, "display": "front", "x": 0, "y": 0},
+            {"id": "window", "type": "image", "path": back, "display": "back", "x": 0, "y": 0},
+        ])
+        await asyncio.sleep(1 / fps)
+
+
+async def listen(bar: BusyBar, luca: Luca) -> None:
+    """Follow the bar's live status stream and turn presses into moods."""
+    try:
+        from busylib import AsyncBusyBar
+        from busylib.features import ButtonEvent, EncoderEvent, input_events
+    except ImportError:
+        print("ℹ️  Install busylib (pip install busylib) to make Luca react to buttons.")
+        return
+
+    client = AsyncBusyBar(bar.host, token=bar.token)
+    delay = 1
+    while True:
+        try:
+            async for message in client.stream_status_ws():
+                delay = 1
+                if not isinstance(message, dict):
+                    continue
+                for event in input_events(message):
+                    if isinstance(event, ButtonEvent) and event.is_press:
+                        mood = BUTTON_MOODS.get(event.button)
+                        if mood:
+                            print(f"  {event.button.upper()} pressed → {mood}")
+                            luca.react(mood)
+                    elif isinstance(event, EncoderEvent) and event.delta:
+                        luca.react("look_right" if event.delta > 0 else "look_left")
+        except Exception as err:  # connection dropped: try again, gently
+            print(f"⚠️  Lost the button stream ({err}); retrying in {delay}s")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30)
+
+
+async def run(bar: BusyBar, luca: Luca, fps: float) -> None:
+    await asyncio.gather(animate(bar, luca, fps), listen(bar, luca))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="10.0.4.20",
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
     ap.add_argument("--token", help="API key, if HTTP access is set to 'key' mode")
-    ap.add_argument("--fps", type=float, default=7, help="bubble animation speed")
+    ap.add_argument("--fps", type=float, default=7, help="animation speed")
+    ap.add_argument("--sleep-after", type=float, default=60, metavar="SECONDS",
+                    help="nap after this long without a press (default: 60)")
     args = ap.parse_args()
 
-    frames = sorted(BUILD.glob("front_*.png"))
-    back = BUILD / "back.png"
-    if not frames or not back.exists():
+    manifest_file = BUILD / "manifest.json"
+    if not manifest_file.exists():
         raise SystemExit("No artwork yet. Run `python render.py` first.")
+    manifest = json.loads(manifest_file.read_text())
 
     bar = BusyBar(args.host, args.token)
-    print(f"🐺 Uploading {len(frames) + 1} images to the BUSY Bar at {args.host}…")
-    for f in [*frames, back]:
-        bar.upload(f.name, f.read_bytes())
+    files = sorted({f for m in manifest.values() for f in [*m["frames"], m["back"]]})
+    print(f"🐺 Uploading {len(files)} images to the BUSY Bar at {args.host}…")
+    for name in files:
+        bar.upload(name, (BUILD / name).read_bytes())
 
-    back_el = {"id": "window", "type": "image", "path": back.name,
-               "display": "back", "x": 0, "y": 0}
-    print("✨ Luca is live! Press Ctrl+C to stop.")
+    print("✨ Luca is live! OK = howl, Back = hey, Start = yay, wheel = look around.")
+    print("   Press Ctrl+C to stop.")
     try:
-        i = 0
-        while True:
-            front_el = {"id": "sky", "type": "image", "path": frames[i].name,
-                        "display": "front", "x": 0, "y": 0}
-            bar.draw([front_el, back_el])
-            i = (i + 1) % len(frames)
-            time.sleep(1 / args.fps)
+        asyncio.run(run(bar, Luca(manifest, args.sleep_after), args.fps))
     except KeyboardInterrupt:
         pass
     finally:
