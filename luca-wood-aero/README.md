@@ -68,9 +68,20 @@ Everything is in `render.py`:
 - `MOODS` / `STATUS`: add your own moods and status lines
 - `BUTTON_MOODS` in `luca_aero.py`: which button does what
 - `--fps`: animation speed (`python luca_aero.py --fps 10`)
-- `--sleep-after`: seconds before Luca naps (default 600 = 10 minutes, e.g. `--sleep-after 300` for 5)
+- `--sleep-after`: how long before Luca naps (see the table below)
 
 Re-run `python render.py` after any change.
+
+### 😴 Nap timer
+
+Luca waits **10 minutes** by default. Pick another nap time with `--sleep-after` (in seconds):
+
+| Nap after | Command |
+| :-- | :-- |
+| 1 minute | `python luca_aero.py --sleep-after 60` |
+| 2 minutes | `python luca_aero.py --sleep-after 120` |
+| 5 minutes | `python luca_aero.py --sleep-after 300` |
+| **10 minutes** (default) | `python luca_aero.py` |
 
 ## 🔧 How it works
 
