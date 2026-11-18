@@ -13,6 +13,7 @@ shows the Aero window on the back, and makes Luca react to the bar's controls:
     python render.py                      # once, to build the artwork
     python luca_aero.py                   # BUSY Bar on USB (10.0.4.20)
     python luca_aero.py --host 192.168.1.42 --token YOUR_KEY   # over Wi-Fi
+    python luca_aero.py --nap 5m          # nap after 5 minutes (default 10m)
 
 Press Ctrl+C to stop; the app clears its screens on the way out.
 Button reactions need the official `busylib` package (pip install busylib).
@@ -152,6 +153,20 @@ async def run(bar: BusyBar, luca: Luca, fps: float) -> None:
     await asyncio.gather(animate(bar, luca, fps), listen(bar, luca))
 
 
+def nap_time(text: str) -> float:
+    """'10m', '10' or '2.5' → minutes; '90s' → seconds. Returns seconds."""
+    value = text.strip().lower()
+    unit = 1 if value.endswith("s") else 60
+    number = value.rstrip("ms").strip()
+    try:
+        seconds = float(number) * unit
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{text}' isn't a time; try 1m, 2m, 5m or 10m")
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("the nap time has to be more than zero")
+    return seconds
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -159,8 +174,9 @@ def main() -> None:
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
     ap.add_argument("--token", help="API key, if HTTP access is set to 'key' mode")
     ap.add_argument("--fps", type=float, default=7, help="animation speed")
-    ap.add_argument("--sleep-after", type=float, default=600, metavar="SECONDS",
-                    help="nap after this long without a press (default: 600, i.e. 10 minutes)")
+    ap.add_argument("--nap", type=nap_time, default="10m", metavar="TIME",
+                    help="nap after this long without a press: 1m, 2m, 5m, 10m, "
+                         "or any number of minutes; add 's' for seconds (default: 10m)")
     args = ap.parse_args()
 
     manifest_file = BUILD / "manifest.json"
@@ -177,7 +193,7 @@ def main() -> None:
     print("✨ Luca is live! OK = howl, Back = hey, Start = yay, wheel = look around.")
     print("   Press Ctrl+C to stop.")
     try:
-        asyncio.run(run(bar, Luca(manifest, args.sleep_after), args.fps))
+        asyncio.run(run(bar, Luca(manifest, args.nap), args.fps))
     except KeyboardInterrupt:
         pass
     finally:
