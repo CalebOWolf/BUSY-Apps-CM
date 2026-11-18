@@ -79,12 +79,21 @@ SPACE_W = 3
 
 
 def to_font_text(text: str) -> str:
-    """Fold accents away and upper-case; anything the font lacks becomes '?'."""
+    """Fold accents away and upper-case. Emoji are dropped; other characters
+    the font lacks become '?'."""
     folded = unicodedata.normalize("NFKD", text)
     folded = "".join(c for c in folded if not unicodedata.combining(c)).upper()
     folded = folded.replace("—", "-").replace("–", "-").replace("’", "'").replace("‘", "'")
     folded = folded.replace("“", '"').replace("”", '"')
-    return "".join(c if (c == " " or c in GLYPHS) else "?" for c in folded)
+    out = []
+    for c in folded:
+        if c == " " or c in GLYPHS:
+            out.append(c)
+        elif ord(c) > 0xFFFF or unicodedata.category(c) in ("So", "Sk", "Cs", "Mn", "Cf"):
+            continue  # emoji and symbols: leave them out rather than show "?"
+        else:
+            out.append("?")
+    return " ".join("".join(out).split())
 
 
 def text_width(text: str) -> int:
