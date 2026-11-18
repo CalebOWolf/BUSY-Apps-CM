@@ -29,6 +29,7 @@ is where those ideas live.
 | [🎵 Luca Now Playing](luca-now-playing/) | Shows the song playing on your computer in glossy Aero style, with Luca bopping along in headphones and the buttons controlling your music | ✅ |
 | [📈 Luca PC Stats](luca-pc-stats/) | My PC's CPU, RAM, GPU and temperatures as glossy Aero gauges, with Luca sweating when things get hot and a Task Manager-style window on the back | ✅ |
 | [🔔 Luca Notify Den](luca-notify-den/) | My PC's desktop notifications on the bar: Luca perks up, the message scrolls by, the LED glows in the app's color, and a Windows 7-style inbox sits on the back | ✅ |
+| [⛅ Luca Weather Den](luca-weather-den/) | Live local weather with an animated Aero sky (sun, rain, snow, storms, stars) and Luca dressed for it, plus a Windows 7-style weather gadget on the back | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it. The code they share for talking to the bar lives in [`shared/`](shared/).
