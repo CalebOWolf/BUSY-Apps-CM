@@ -24,55 +24,20 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import signal
+import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from busybar import BarOffline, BusyBar, image, input_events, is_press, is_wheel  # noqa: E402
 
 APP = "luca_wood_aero"
 BUILD = Path(__file__).parent / "build"
 
 # What each control makes Luca do.
 BUTTON_MOODS = {"ok": "howl", "back": "wave", "start": "yay"}
-
-
-class BusyBar:
-    def __init__(self, host: str, token: str | None = None):
-        self.host = host
-        self.base = f"http://{host}/api"
-        self.token = token
-
-    def _call(self, method: str, path: str, params: dict | None = None,
-              body: bytes | None = None, content_type: str | None = None) -> dict:
-        url = self.base + path
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, data=body, method=method)
-        if content_type:
-            req.add_header("Content-Type", content_type)
-        if self.token:
-            req.add_header("X-API-Token", self.token)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as err:
-            detail = err.read().decode(errors="replace")
-            raise SystemExit(f"BUSY Bar said {err.code} for {method} {path}: {detail}")
-        return json.loads(raw) if raw else {}
-
-    def upload(self, filename: str, data: bytes) -> None:
-        self._call("POST", "/assets/upload",
-                   params={"application_name": APP, "file": filename},
-                   body=data, content_type="application/octet-stream")
-
-    def draw(self, elements: list[dict], priority: int = 50) -> None:
-        payload = {"application_name": APP, "priority": priority, "elements": elements}
-        self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
-                   content_type="application/json")
-
-    def clear(self) -> None:
-        self._call("DELETE", "/display/draw", params={"application_name": APP})
 
 
 class Luca:
@@ -108,49 +73,51 @@ class Luca:
         return name, m["back"]
 
 
-async def animate(bar: BusyBar, luca: Luca, fps: float) -> None:
+def upload_artwork(bar: BusyBar, manifest: dict) -> None:
+    files = sorted({f for m in manifest.values() for f in [*m["frames"], m["back"]]})
+    print(f"🐺 Uploading {len(files)} images to the BUSY Bar at {bar.host}…")
+    for name in files:
+        bar.upload(name, (BUILD / name).read_bytes())
+
+
+async def animate(bar: BusyBar, luca: Luca, manifest: dict, fps: float) -> None:
+    """Play Luca's frames, and ride out the bar going away (re-uploading the
+    artwork when it comes back)."""
+    online, retry = False, 2
     while True:
-        front, back = luca.next_frame()
-        await asyncio.to_thread(bar.draw, [
-            {"id": "sky", "type": "image", "path": front, "display": "front", "x": 0, "y": 0},
-            {"id": "window", "type": "image", "path": back, "display": "back", "x": 0, "y": 0},
-        ])
-        await asyncio.sleep(1 / fps)
+        try:
+            if not online:
+                await asyncio.to_thread(upload_artwork, bar, manifest)
+                online, retry = True, 2
+                print("✨ Luca is live! OK = howl, Back = hey, Start = yay, wheel = look around.")
+            front, back = luca.next_frame()
+            await asyncio.to_thread(bar.draw, [
+                image("sky", front, 0, 0),
+                image("window", back, 0, 0, display="back"),
+            ])
+            await asyncio.sleep(1 / fps)
+        except BarOffline as err:
+            if online or retry == 2:
+                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+            online = False
+            await asyncio.sleep(retry)
+            retry = min(retry * 2, 30)
 
 
 async def listen(bar: BusyBar, luca: Luca) -> None:
-    """Follow the bar's live status stream and turn presses into moods."""
-    try:
-        from busylib import AsyncBusyBar
-        from busylib.features import ButtonEvent, EncoderEvent, input_events
-    except ImportError:
-        print("ℹ️  Install busylib (pip install busylib) to make Luca react to buttons.")
-        return
-
-    client = AsyncBusyBar(bar.host, token=bar.token)
-    delay = 1
-    while True:
-        try:
-            async for message in client.stream_status_ws():
-                delay = 1
-                if not isinstance(message, dict):
-                    continue
-                for event in input_events(message):
-                    if isinstance(event, ButtonEvent) and event.is_press:
-                        mood = BUTTON_MOODS.get(event.button)
-                        if mood:
-                            print(f"  {event.button.upper()} pressed → {mood}")
-                            luca.react(mood)
-                    elif isinstance(event, EncoderEvent) and event.delta:
-                        luca.react("look_right" if event.delta > 0 else "look_left")
-        except Exception as err:  # connection dropped: try again, gently
-            print(f"⚠️  Lost the button stream ({err}); retrying in {delay}s")
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, 30)
+    """Turn the bar's button presses and wheel turns into moods."""
+    async for event in input_events(bar):
+        if is_press(event):
+            mood = BUTTON_MOODS.get(event.button)
+            if mood:
+                print(f"  {event.button.upper()} pressed → {mood}")
+                luca.react(mood)
+        elif is_wheel(event):
+            luca.react("look_right" if event.delta > 0 else "look_left")
 
 
-async def run(bar: BusyBar, luca: Luca, fps: float) -> None:
-    await asyncio.gather(animate(bar, luca, fps), listen(bar, luca))
+async def run(bar: BusyBar, luca: Luca, manifest: dict, fps: float) -> None:
+    await asyncio.gather(animate(bar, luca, manifest, fps), listen(bar, luca))
 
 
 def nap_time(text: str) -> float:
@@ -172,7 +139,8 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="10.0.4.20",
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
-    ap.add_argument("--token", help="API key, if HTTP access is set to 'key' mode")
+    ap.add_argument("--token", default=os.environ.get("BUSYBAR_TOKEN"),
+                    help="API key, if HTTP access is set to 'key' mode (or set BUSYBAR_TOKEN)")
     ap.add_argument("--fps", type=float, default=7, help="animation speed")
     ap.add_argument("--den", type=nap_time, default="10m", metavar="TIME",
                     help="nap after this long without a press: 1m, 2m, 5m, 10m, "
@@ -184,21 +152,19 @@ def main() -> None:
         raise SystemExit("No artwork yet. Run `python render.py` first.")
     manifest = json.loads(manifest_file.read_text())
 
-    bar = BusyBar(args.host, args.token)
-    files = sorted({f for m in manifest.values() for f in [*m["frames"], m["back"]]})
-    print(f"🐺 Uploading {len(files)} images to the BUSY Bar at {args.host}…")
-    for name in files:
-        bar.upload(name, (BUILD / name).read_bytes())
-
-    print("✨ Luca is live! OK = howl, Back = hey, Start = yay, wheel = look around.")
+    bar = BusyBar(args.host, APP, args.token)
     print("   Press Ctrl+C to stop.")
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
-        asyncio.run(run(bar, Luca(manifest, args.den), args.fps))
+        asyncio.run(run(bar, Luca(manifest, args.den), manifest, args.fps))
     except KeyboardInterrupt:
         pass
     finally:
-        bar.clear()
-        print("\n🌙 Luca says goodnight. Screens cleared.")
+        try:
+            bar.clear()
+            print("\n🌙 Luca says goodnight. Screens cleared.")
+        except BarOffline:
+            print("\n🌙 Luca says goodnight.")
 
 
 if __name__ == "__main__":

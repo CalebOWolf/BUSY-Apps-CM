@@ -30,11 +30,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import io
-import json
 import os
 import shutil
 import signal
-import subprocess
 import sys
 import time
 import urllib.error
@@ -44,9 +42,13 @@ from pathlib import Path
 
 from PIL import Image
 
-import art
-import media
-import visualizer
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+import art  # noqa: E402
+import media  # noqa: E402
+import service  # noqa: E402
+import visualizer  # noqa: E402
+from busybar import BarOffline, BusyBar, image, input_events, is_press, is_wheel  # noqa: E402
+from busybar import rect as bar  # noqa: E402
 
 APP = "luca_now_playing"
 SLIDE_FRAMES = 8          # how long a new title takes to slide in
@@ -54,66 +56,7 @@ SPARKLE_FRAMES = 12       # how long the song-change sparkles last
 SPARKLES = [(24, 2, 0), (40, 12, 2), (55, 1, 4), (68, 10, 1), (33, 7, 5), (62, 5, 3)]
 SPARKLE_COLORS = ["#FFF05AFF", "#FFFFFFFF", "#78FFC8FF", "#FF78C8FF"]
 BUTTON_ACTIONS = {"ok": "toggle", "start": "next", "back": "previous"}
-UNIT_NAME = "luca-now-playing.service"
-
-
-class BarOffline(Exception):
-    """The BUSY Bar didn't answer (unplugged, asleep, off Wi-Fi…)."""
-
-
-class BusyBar:
-    def __init__(self, host: str, token: str | None = None):
-        self.host = host
-        self.base = f"http://{host}/api"
-        self.token = token
-
-    def _call(self, method: str, path: str, params: dict | None = None,
-              body: bytes | None = None, content_type: str | None = None) -> dict:
-        url = self.base + path
-        if params:
-            url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, data=body, method=method)
-        if content_type:
-            req.add_header("Content-Type", content_type)
-        if self.token:
-            req.add_header("X-API-Token", self.token)
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as err:
-            detail = err.read().decode(errors="replace")
-            raise BarOffline(f"it said {err.code} for {method} {path}: {detail}") from err
-        except (urllib.error.URLError, OSError) as err:
-            raise BarOffline(str(getattr(err, "reason", err))) from err
-        return json.loads(raw) if raw else {}
-
-    def upload(self, filename: str, data: bytes) -> None:
-        self._call("POST", "/assets/upload",
-                   params={"application_name": APP, "file": filename},
-                   body=data, content_type="application/octet-stream")
-
-    def upload_image(self, filename: str, image) -> None:
-        buf = io.BytesIO()
-        image.save(buf, "PNG")
-        self.upload(filename, buf.getvalue())
-
-    def draw(self, elements: list[dict], priority: int = 50) -> None:
-        payload = {"application_name": APP, "priority": priority, "elements": elements}
-        self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
-                   content_type="application/json")
-
-    def clear(self) -> None:
-        self._call("DELETE", "/display/draw", params={"application_name": APP})
-
-
-def image(id_: str, path: str, x: int, y: int, display: str = "front") -> dict:
-    return {"id": id_, "type": "image", "path": path, "display": display, "x": x, "y": y}
-
-
-def bar(id_: str, x: int, y: int, w: int, h: int, color: str, display: str = "front") -> dict:
-    return {"id": id_, "type": "rectangle", "display": display, "x": x, "y": y,
-            "width": w, "height": h, "fill": "solid", "fill_colors": [color],
-            "border_width": 0}
+SERVICE = "luca-now-playing"
 
 
 def clock(seconds: float) -> str:
@@ -388,41 +331,25 @@ async def animate(screen: Screen, fps: float) -> None:
 
 
 async def listen(screen: Screen) -> None:
-    """Follow the bar's live status stream and turn presses into music controls."""
-    try:
-        from busylib import AsyncBusyBar
-        from busylib.features import ButtonEvent, EncoderEvent, input_events
-    except ImportError:
-        print("ℹ️  Install busylib (pip install busylib) to control music from the bar.")
-        return
-
-    client = AsyncBusyBar(screen.bar.host, token=screen.bar.token)
-    delay = 2
-    while True:
-        try:
-            async for message in client.stream_status_ws():
-                delay = 2
-                if not isinstance(message, dict) or not screen.shown:
-                    continue  # buttons belong to the bar while Luca is away
-                for event in input_events(message):
-                    if isinstance(event, EncoderEvent) and event.delta and screen.volume.available:
-                        clicks = -event.delta if screen.reverse_wheel else event.delta
-                        screen.pending_clicks += clicks
-                        screen.volume_up = clicks > 0
-                        screen.volume_until = time.monotonic() + 1.5
-                    elif isinstance(event, ButtonEvent) and event.is_press:
-                        action = BUTTON_ACTIONS.get(event.button)
-                        if not action:
-                            continue
-                        print(f"  {event.button.upper()} pressed → {action}")
-                        if action != "toggle":
-                            screen.hop_until = time.monotonic() + 1.2
-                        await screen.player.control(action)
-                        await asyncio.sleep(0.3)  # give the player a moment
-                        screen.refresh.set()
-        except Exception:  # the bar went away; the animate loop already says so
-            await asyncio.sleep(delay)
-            delay = min(delay * 2, 30)
+    """Turn the bar's button presses and wheel turns into music controls."""
+    async for event in input_events(screen.bar):
+        if not screen.shown:
+            continue  # buttons belong to the bar while Luca is away
+        if is_wheel(event) and screen.volume.available:
+            clicks = -event.delta if screen.reverse_wheel else event.delta
+            screen.pending_clicks += clicks
+            screen.volume_up = clicks > 0
+            screen.volume_until = time.monotonic() + 1.5
+        elif is_press(event):
+            action = BUTTON_ACTIONS.get(event.button)
+            if not action:
+                continue
+            print(f"  {event.button.upper()} pressed → {action}")
+            if action != "toggle":
+                screen.hop_until = time.monotonic() + 1.2
+            await screen.player.control(action)
+            await asyncio.sleep(0.3)  # give the player a moment
+            screen.refresh.set()
 
 
 async def turn_volume(screen: Screen) -> None:
@@ -445,41 +372,14 @@ async def run(screen: Screen, fps: float) -> None:
 # --------------------------------------------------------------------------
 # Start at login (Linux, systemd user service)
 # --------------------------------------------------------------------------
-def unit_path() -> Path:
-    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    return config / "systemd" / "user" / UNIT_NAME
-
-
-def systemd_quote(arg: str) -> str:
-    return '"' + arg.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
-
-
-def systemctl(*args: str) -> None:
-    cmd = ["systemctl", "--user", *args]
-    print("  $ " + " ".join(cmd))
-    subprocess.run(cmd, check=True)
-
-
-def require_systemd() -> None:
-    if not sys.platform.startswith("linux") or not shutil.which("systemctl"):
-        raise SystemExit("--install / --uninstall set up a systemd user service, so they "
-                         "only work on Linux with systemd.")
-
-
 def install(args) -> None:
-    require_systemd()
     if args.demo:
         raise SystemExit("--install starts the real thing; leave out --demo.")
-    missing = [name for name, ok in [
-        ("playerctl (sudo pacman -S playerctl)", shutil.which("playerctl")),
-        ("Pillow (pip install pillow)", _importable("PIL")),
-        ("busylib (pip install busylib)", _importable("busylib")),
-    ] if not ok]
-    if missing:
-        print("⚠️  Not found for this Python, install first: " + ", ".join(missing))
-        if not _importable("PIL"):
-            raise SystemExit(1)
-
+    service.check([
+        ("playerctl (sudo pacman -S playerctl)", bool(shutil.which("playerctl"))),
+        ("Pillow (pip install pillow)", service.importable("PIL")),
+        ("busylib (pip install busylib)", service.importable("busylib")),
+    ], required={"Pillow (pip install pillow)"})
     command = [sys.executable, str(Path(__file__).resolve()),
                "--host", args.host, "--linger", args.linger_text, "--fps", str(args.fps)]
     if args.player:
@@ -488,44 +388,8 @@ def install(args) -> None:
         command += ["--reverse-wheel"]
     if args.visualizer != "auto":
         command += ["--visualizer", args.visualizer]
-    lines = [
-        "[Unit]",
-        "Description=Luca Now Playing for the BUSY Bar",
-        "",
-        "[Service]",
-        "ExecStart=" + " ".join(systemd_quote(a) for a in command),
-        "Environment=PYTHONUNBUFFERED=1",
-    ]
-    if args.token:
-        lines.append("Environment=" + systemd_quote(f"BUSYBAR_TOKEN={args.token}"))
-    lines += ["Restart=on-failure", "RestartSec=10", "", "[Install]", "WantedBy=default.target", ""]
-
-    path = unit_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines))
-    path.chmod(0o600)  # it may hold your API key
-    print(f"📝 Wrote {path}")
-    systemctl("daemon-reload")
-    systemctl("enable", "--now", UNIT_NAME)
-    print("✨ Done! Luca now starts at login and appears whenever you play music.")
-    print(f"   Watch what he's up to:  journalctl --user -u {UNIT_NAME} -f")
-
-
-def uninstall() -> None:
-    require_systemd()
-    path = unit_path()
-    if path.exists():
-        systemctl("disable", "--now", UNIT_NAME)
-        path.unlink()
-        systemctl("daemon-reload")
-        print(f"🗑️  Removed {path}. Luca won't start at login any more.")
-    else:
-        print("Nothing to remove: Luca isn't set to start at login.")
-
-
-def _importable(module: str) -> bool:
-    import importlib.util
-    return importlib.util.find_spec(module) is not None
+    service.install(SERVICE, "Luca Now Playing for the BUSY Bar", command, args.token,
+                    "Luca now starts at login and appears whenever you play music.")
 
 
 def main() -> None:
@@ -564,10 +428,10 @@ def main() -> None:
     if args.install:
         return install(args)
     if args.uninstall:
-        return uninstall()
+        return service.uninstall(SERVICE)
 
     player = media.detect(args.demo, args.player)
-    bar_ = BusyBar(args.host, args.token)
+    bar_ = BusyBar(args.host, APP, args.token)
     volume = media.Volume()
     screen = Screen(bar_, player, args.linger, volume)
     screen.reverse_wheel = args.reverse_wheel

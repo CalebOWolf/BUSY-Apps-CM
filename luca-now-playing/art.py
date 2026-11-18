@@ -14,10 +14,14 @@ Per song (uploaded when the song or play state changes):
 from __future__ import annotations
 
 import math
-import unicodedata
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from pixelart import draw_text, led_preview, lerp, text_width, to_font_text  # noqa: E402
+from pixelart import ui_font as font  # noqa: E402
 
 HERE = Path(__file__).parent
 PORTRAIT = HERE / "assets" / "luca_small.png"
@@ -30,105 +34,6 @@ TEXT_W = FRONT_W - TEXT_X       # visible text width
 BAR_Y = 14                      # progress bar row on the strip
 BG_FRAMES = 12
 GAP = "   ♪   "                 # between repeats of a scrolling title
-
-# --------------------------------------------------------------------------
-# Pixel font (5x7, uppercase): crisp on a 16-pixel-tall LED strip
-# --------------------------------------------------------------------------
-_FONT_SRC = {
-    "A": ".XXX. X...X X...X XXXXX X...X X...X X...X",
-    "B": "XXXX. X...X X...X XXXX. X...X X...X XXXX.",
-    "C": ".XXXX X.... X.... X.... X.... X.... .XXXX",
-    "D": "XXXX. X...X X...X X...X X...X X...X XXXX.",
-    "E": "XXXXX X.... X.... XXXX. X.... X.... XXXXX",
-    "F": "XXXXX X.... X.... XXXX. X.... X.... X....",
-    "G": ".XXXX X.... X.... X.XXX X...X X...X .XXXX",
-    "H": "X...X X...X X...X XXXXX X...X X...X X...X",
-    "I": "XXX .X. .X. .X. .X. .X. XXX",
-    "J": "..XXX ...X. ...X. ...X. ...X. X..X. .XX..",
-    "K": "X...X X..X. X.X.. XX... X.X.. X..X. X...X",
-    "L": "X.... X.... X.... X.... X.... X.... XXXXX",
-    "M": "X...X XX.XX X.X.X X.X.X X...X X...X X...X",
-    "N": "X...X XX..X X.X.X X..XX X...X X...X X...X",
-    "O": ".XXX. X...X X...X X...X X...X X...X .XXX.",
-    "P": "XXXX. X...X X...X XXXX. X.... X.... X....",
-    "Q": ".XXX. X...X X...X X...X X.X.X X..X. .XX.X",
-    "R": "XXXX. X...X X...X XXXX. X.X.. X..X. X...X",
-    "S": ".XXXX X.... X.... .XXX. ....X ....X XXXX.",
-    "T": "XXXXX ..X.. ..X.. ..X.. ..X.. ..X.. ..X..",
-    "U": "X...X X...X X...X X...X X...X X...X .XXX.",
-    "V": "X...X X...X X...X X...X X...X .X.X. ..X..",
-    "W": "X...X X...X X...X X.X.X X.X.X XX.XX X...X",
-    "X": "X...X X...X .X.X. ..X.. .X.X. X...X X...X",
-    "Y": "X...X X...X .X.X. ..X.. ..X.. ..X.. ..X..",
-    "Z": "XXXXX ....X ...X. ..X.. .X... X.... XXXXX",
-    "0": ".XXX. X...X X..XX X.X.X XX..X X...X .XXX.",
-    "1": ".X. XX. .X. .X. .X. .X. XXX",
-    "2": ".XXX. X...X ....X ...X. ..X.. .X... XXXXX",
-    "3": "XXXX. ....X ....X .XXX. ....X ....X XXXX.",
-    "4": "...X. ..XX. .X.X. X..X. XXXXX ...X. ...X.",
-    "5": "XXXXX X.... XXXX. ....X ....X X...X .XXX.",
-    "6": ".XXX. X.... X.... XXXX. X...X X...X .XXX.",
-    "7": "XXXXX ....X ...X. ..X.. .X... .X... .X...",
-    "8": ".XXX. X...X X...X .XXX. X...X X...X .XXX.",
-    "9": ".XXX. X...X X...X .XXXX ....X ....X .XXX.",
-    ".": ". . . . . . X",
-    ",": ". . . . . X X",
-    "!": "X X X X X . X",
-    "?": ".XXX. X...X ....X ...X. ..X.. ..... ..X..",
-    "'": "X X . . . . .",
-    '"': "X.X X.X ... ... ... ... ...",
-    "-": "... ... ... XXX ... ... ...",
-    "&": ".XX.. X..X. .XX.. .X... X.X.X X..X. .XX.X",
-    "(": ".X X. X. X. X. X. .X",
-    ")": "X. .X .X .X .X .X X.",
-    ":": ". X . . . X .",
-    "/": "....X ...X. ...X. ..X.. .X... .X... X....",
-    "+": "..... ..X.. ..X.. XXXXX ..X.. ..X.. .....",
-    "#": ".X.X. XXXXX .X.X. .X.X. .X.X. XXXXX .X.X.",
-    "@": ".XXX. X...X X.XXX X.X.X X.XXX X.... .XXXX",
-    "*": "..... X.X.X .XXX. XXXXX .XXX. X.X.X .....",
-    "_": "..... ..... ..... ..... ..... ..... XXXXX",
-    "♪": "..XX. ..X.X ..X.. ..X.. XXX.. XXX.. .....",
-}
-GLYPHS = {ch: src.split() for ch, src in _FONT_SRC.items()}
-SPACE_W = 3
-
-
-def to_font_text(text: str) -> str:
-    """Fold accents away and upper-case; anything the font lacks becomes '?'."""
-    folded = unicodedata.normalize("NFKD", text)
-    folded = "".join(c for c in folded if not unicodedata.combining(c)).upper()
-    folded = folded.replace("—", "-").replace("–", "-").replace("’", "'").replace("‘", "'")
-    folded = folded.replace("“", '"').replace("”", '"')
-    return "".join(c if (c == " " or c in GLYPHS) else "?" for c in folded)
-
-
-def text_width(text: str) -> int:
-    w = 0
-    for ch in text:
-        w += SPACE_W if ch == " " else len(GLYPHS[ch][0]) + 1
-    return max(w - 1, 0)
-
-
-def draw_text(img: Image.Image, text: str, x: int, y: int,
-              color=(255, 255, 255, 255), shadow=(0, 30, 90, 255)) -> None:
-    px = img.load()
-    for pass_, (dx, dy) in enumerate([(1, 1), (0, 0)]):
-        cx = x
-        for ch in text:
-            if ch == " ":
-                cx += SPACE_W
-                continue
-            for gy, row in enumerate(GLYPHS[ch]):
-                for gx, on in enumerate(row):
-                    X, Y = cx + gx + dx, y + gy + dy
-                    if on == "X" and 0 <= X < img.width and 0 <= Y < img.height:
-                        if pass_ == 0:
-                            px[X, Y] = shadow
-                        else:
-                            px[X, Y] = (120, 255, 200, 255) if ch == "♪" else color
-            cx += len(GLYPHS[ch][0]) + 1
-
 
 def text_strip(text: str, dim: bool = False) -> tuple[Image.Image, int]:
     """
@@ -191,10 +96,6 @@ def luca(eyes: str = "open") -> list[str]:
     rows[6][3:5], rows[7][3:5] = l6, l7
     rows[6][10:12], rows[7][10:12] = r6, r7
     return ["".join(r) for r in rows]
-
-
-def lerp(a, b, t):
-    return tuple(int(round(x + (y - x) * t)) for x, y in zip(a, b))
 
 
 def glass_tile() -> Image.Image:
@@ -308,13 +209,6 @@ BACK_BAR = (52, 57, 149, 59)  # x0, y0, x1, y1
 BACK_TIME_XY = (150, 63)      # right edge of the time text
 
 
-def font(size: int):
-    try:
-        return ImageFont.load_default(size=size)
-    except TypeError:
-        return ImageFont.load_default()
-
-
 def fit(d: ImageDraw.ImageDraw, text: str, f, width: int) -> str:
     if d.textlength(text, font=f) <= width:
         return text
@@ -413,17 +307,6 @@ def compose_front(bg: Image.Image, strip: Image.Image, offset: int, tile_img: Im
         if w:
             d.line([(TEXT_X, BAR_Y), (TEXT_X + w - 1, BAR_Y)], fill=(120, 255, 200))
     return out.convert("RGB")
-
-
-def led_preview(frame: Image.Image, scale: int = 10) -> Image.Image:
-    w, h = frame.size
-    out = Image.new("RGB", (w * scale, h * scale), (10, 10, 14))
-    d = ImageDraw.Draw(out)
-    for y in range(h):
-        for x in range(w):
-            d.ellipse([x * scale + 1, y * scale + 1, x * scale + scale - 2,
-                       y * scale + scale - 2], fill=frame.getpixel((x, y)))
-    return out
 
 
 def main() -> None:
