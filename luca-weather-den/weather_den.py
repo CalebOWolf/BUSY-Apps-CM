@@ -38,6 +38,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
 import service  # noqa: E402
+from turns import TurnTaker  # noqa: E402
 import weather  # noqa: E402
 from busybar import BarOffline, BusyBar, image, input_events, is_press, is_wheel  # noqa: E402
 
@@ -152,8 +153,12 @@ async def follow_weather(den: Den, get_report, every: float) -> None:
 
 async def animate(den: Den) -> None:
     retry = 2
+    turn = TurnTaker(APP, den.bar)
     while True:
         try:
+            if not await asyncio.to_thread(turn.check):
+                await asyncio.sleep(0.5)  # another app's turn (Luca's Den)
+                continue
             if den.report is None:
                 await asyncio.sleep(0.5)  # nothing to show until the first reading
                 continue

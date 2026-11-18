@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
 import service  # noqa: E402
+from turns import TurnTaker  # noqa: E402
 import sky  # noqa: E402
 from busybar import BarOffline, BusyBar, image, input_events, is_press  # noqa: E402
 
@@ -121,8 +122,12 @@ class Clock:
 
 async def animate(clock: Clock) -> None:
     retry = 2
+    turn = TurnTaker(APP, clock.bar)
     while True:
         try:
+            if not await asyncio.to_thread(turn.check):
+                await asyncio.sleep(0.5)  # another app's turn (Luca's Den)
+                continue
             now = datetime.now().astimezone()
             if not clock.online:
                 await asyncio.to_thread(clock.upload_static)

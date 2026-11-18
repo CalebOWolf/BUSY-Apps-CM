@@ -123,6 +123,9 @@ The bar should show the highest one with something to show, so notifications and
 over the weather. Weather Den and PC Stats are both "always on", so if you run both, PC
 Stats wins. Give Weather Den `--priority 25` if you'd rather see the weather.
 
+> 🏠 Running more than one always-on app (PC Stats, Weather Den, Aero Clock)? Start
+> [Luca's Den](../luca-den/) and they'll take turns, a minute each.
+
 ## 🎨 Make it yours
 
 - `art.py`: the skies in `scene()`, Luca's outfits in `luca()`, which outfit when in

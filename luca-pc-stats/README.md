@@ -115,6 +115,9 @@ them; they're saved into the service:
 
 If the bar is unplugged or off Wi-Fi, Luca waits quietly and comes back when it does.
 
+> 🏠 Running more than one always-on app (PC Stats, Weather Den, Aero Clock)? Start
+> [Luca's Den](../luca-den/) and they'll take turns, a minute each.
+
 ## 🎨 Make it yours
 
 - `art.py`: Luca's moods in `luca()`, the gauge colors in `gauge_color()`, and the *Luca

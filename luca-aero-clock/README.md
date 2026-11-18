@@ -105,6 +105,9 @@ anything to show. It's the bar's "home screen":
 PC Stats and Weather Den are "always on" too, so with either running, the clock stays
 behind them. Run the clock on its own as your home screen, or give it a higher `--priority`.
 
+> 🏠 Running more than one always-on app (PC Stats, Weather Den, Aero Clock)? Start
+> [Luca's Den](../luca-den/) and they'll take turns, a minute each.
+
 ## 🎨 Make it yours
 
 - `art.py`: the sky colors for each sun height in `SKY_STOPS`, Luca's moods in `luca()`, and

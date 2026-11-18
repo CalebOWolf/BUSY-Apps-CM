@@ -9,6 +9,7 @@ Code every app in this repo uses, so a fix here helps them all.
 | `notifications.py` | The D-Bus desktop-notification watcher (used by Notify Den and Discord) |
 | `devices.py` | Which apps are using the mic and webcam (used by On Air and Discord) |
 | `quiet.py` | `quiet_reason()`: should notification apps hold messages (focus round / on air)? |
+| `turns.py` | Taking turns for the always-on apps, scheduled by Luca's Den (`TurnTaker`) |
 | `service.py` | `--install` / `--uninstall` support: a systemd user service so an app starts at login |
 
 Apps add this folder to their import path at the top:
