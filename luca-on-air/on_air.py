@@ -41,12 +41,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
 import service  # noqa: E402
 import sources  # noqa: E402
-from busybar import BarOffline, BusyBar, image, input_events, is_press, is_wheel  # noqa: E402
+from busybar import BarOffline, BusyBar, image, input_events, is_press, is_running, is_wheel  # noqa: E402
 
 APP = "luca_on_air"
 SERVICE = "luca-on-air"
 PAGE_SECONDS = 4
 POLL_SECONDS = 2
+DISCORD_APPS = {"discord", "vesktop", "webcord", "armcord", "legcord"}
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
 # Luca Notify Den reads this to hold notifications while you're live or recording.
 HUSH_FILE = Path(os.environ.get("XDG_RUNTIME_DIR") or CACHE_DIR) / "luca-onair.json"
@@ -163,7 +164,11 @@ async def watch_devices(sign: Sign, mic: bool, camera: bool, extra_call_apps: se
     while True:
         s = sign.status
         s.mic_apps = await asyncio.to_thread(sources.mic_users) if mic else []
-        s.call_app = next((a for a in s.mic_apps if a in calls), None)
+        if is_running("luca_discord"):  # Luca Discord shows Discord calls, with more detail
+            calls_now = calls - DISCORD_APPS
+        else:
+            calls_now = calls
+        s.call_app = next((a for a in s.mic_apps if a in calls_now), None)
         s.cam_apps = await asyncio.to_thread(sources.camera_users) if camera else []
         sign.changed.set()
         await asyncio.sleep(POLL_SECONDS)

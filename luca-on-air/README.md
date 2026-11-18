@@ -110,6 +110,9 @@ API key).
 
 ## 🤝 With the other apps
 
+Running [💬 Luca Discord](../luca-discord/)? On Air leaves Discord calls to it (it shows the
+channel and who's talking) and still lights **IN CALL** for Zoom, Teams and the rest.
+
 | App | Priority |
 | :-- | :-- |
 | 🔔 Notify Den | 70 (but it holds notifications while you're live or recording) |

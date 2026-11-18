@@ -43,10 +43,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
+from quiet import QUIET_FILES, quiet_reason  # noqa: E402,F401
 import service  # noqa: E402
 import watcher  # noqa: E402
 from busybar import (BarOffline, BusyBar, image, input_events, is_press,  # noqa: E402
-                     is_selector, is_wheel, rect)
+                     is_running, is_selector, is_wheel, rect)
 
 APP = "luca_notify_den"
 SERVICE = "luca-notify-den"
@@ -54,23 +55,7 @@ HOLD_FRAMES = 12        # pause before a long message starts scrolling
 ALERT_SECONDS = 1.5     # how long Luca stays perked up before he reads
 MAX_WAITING = 5         # keep only the newest few while you're away or busy
 MAX_SECONDS = 30        # the longest one notification stays up
-# Luca Pack Focus and Luca On Air write these while you're focusing or on air.
-_SHARED_DIR = Path(os.environ.get("XDG_RUNTIME_DIR")
-                   or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"))
-QUIET_FILES = {"focus": (_SHARED_DIR / "luca-focus.json", "focusing"),
-               "onair": (_SHARED_DIR / "luca-onair.json", "on_air")}
-
-
-def quiet_reason() -> str | None:
-    """"focus" during a focus round, "onair" while live or recording, else None."""
-    for reason, (path, flag) in QUIET_FILES.items():
-        try:
-            data = json.loads(path.read_text())
-        except (OSError, ValueError):
-            continue
-        if data.get(flag) and time.time() - data.get("updated", 0) < 5:
-            return reason
-    return None
+DISCORD_APPS = {"discord", "vesktop", "webcord", "armcord", "legcord", "discord canary", "discord ptb"}
 
 
 class Den:
@@ -102,6 +87,8 @@ class Den:
     def arrive(self, note) -> None:
         if note.app.strip().lower() in self.ignore:
             return
+        if note.app.strip().lower() in DISCORD_APPS and is_running("luca_discord"):
+            return  # Luca Discord shows these, with more detail
         self.history.appendleft(note)
         self.waiting.append(note)
         where = (" (held: do not disturb)" if self.dnd else

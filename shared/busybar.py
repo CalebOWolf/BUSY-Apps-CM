@@ -259,3 +259,34 @@ class Presence:
             if now - data.get("updated", 0) < FRESH and data.get("priority", 0) > self.priority:
                 return False
         return True
+
+
+# --------------------------------------------------------------------------
+# Which of our apps are running
+# --------------------------------------------------------------------------
+RUNNING_DIR = PRESENCE_DIR / "running"
+
+
+def mark_running(app: str) -> None:
+    """Say "I'm running" (call every few seconds), so other apps can hand
+    things over: e.g. Notify Den leaves Discord to Luca Discord."""
+    try:
+        RUNNING_DIR.mkdir(parents=True, exist_ok=True)
+        (RUNNING_DIR / f"{app}.json").write_text(json.dumps({"updated": time.time()}))
+    except OSError:
+        pass
+
+
+def stop_running(app: str) -> None:
+    try:
+        (RUNNING_DIR / f"{app}.json").unlink()
+    except OSError:
+        pass
+
+
+def is_running(app: str, fresh: float = 10) -> bool:
+    try:
+        data = json.loads((RUNNING_DIR / f"{app}.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return time.time() - data.get("updated", 0) < fresh

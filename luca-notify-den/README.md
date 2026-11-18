@@ -73,6 +73,9 @@ or lower case.
 
 ## 🤝 Plays nicely with the other apps
 
+Running [💬 Luca Discord](../luca-discord/)? Notify Den leaves Discord's notifications to it
+(so they don't show twice) and keeps showing everyone else's.
+
 Notify Den draws at a **high priority** (70), so a notification shows over Luca Now Playing
 (50) and Luca PC Stats (20), and they come back as soon as it's done. Change it with
 `--priority`.
