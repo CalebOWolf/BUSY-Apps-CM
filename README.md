@@ -27,9 +27,10 @@ is where those ideas live.
 | :-- | :----------- | :----: |
 | [🐺 Luca Wood Aero](luca-wood-aero/) | My fursona Luca Wood in glossy Frutiger Aero / Windows 7 style, with bubbles on the front and an Aero window on the back | ✅ |
 | [🎵 Luca Now Playing](luca-now-playing/) | Shows the song playing on your computer in glossy Aero style, with Luca bopping along in headphones and the buttons controlling your music | ✅ |
+| [📈 Luca PC Stats](luca-pc-stats/) | My PC's CPU, RAM, GPU and temperatures as glossy Aero gauges, with Luca sweating when things get hot and a Task Manager-style window on the back | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
-> and use it.
+> and use it. The code they share for talking to the bar lives in [`shared/`](shared/).
 
 ## 🚀 Getting Started
 
