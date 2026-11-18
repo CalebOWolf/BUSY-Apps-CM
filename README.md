@@ -31,6 +31,7 @@ is where those ideas live.
 | [🔔 Luca Notify Den](luca-notify-den/) | My PC's desktop notifications on the bar: Luca perks up, the message scrolls by, the LED glows in the app's color, and a Windows 7-style inbox sits on the back | ✅ |
 | [⛅ Luca Weather Den](luca-weather-den/) | Live local weather with an animated Aero sky (sun, rain, snow, storms, stars) and Luca dressed for it, plus a Windows 7-style weather gadget on the back | ✅ |
 | [🌕 Luca Pack Focus](luca-pack-focus/) | A Pomodoro-style focus timer: a moon waxes as you focus, Luca howls when it's full, sunset breaks, and notifications wait until your break | ✅ |
+| [🕰️ Luca Aero Clock](luca-aero-clock/) | A glossy desk clock with big digits, a sky that follows the real sun and moon, Luca's mood through the day, and a Windows 7 clock gadget on the back | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it. The code they share for talking to the bar lives in [`shared/`](shared/).
