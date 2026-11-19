@@ -8,6 +8,12 @@ Install your Luca apps for the BUSY Bar in one go (Linux, systemd).
     python install.py --list              what's available, and what's installed
     python install.py --uninstall clock   stop some (or --uninstall --all) starting at login
     python install.py --check             try each app on the bar for a few seconds, install nothing
+    python install.py --reconfigure       ask everything again instead of using saved answers
+    python install.py --forget            delete the saved answers (passwords and keys too)
+
+Your answers (city, channel, OBS password, Discord keys, the bar's address
+and key) are remembered in ~/.config/luca-bar/settings.json, which only you
+can read, so a reinstall doesn't ask again. Uninstalling keeps them.
 
 It makes Luca's Python environment (~/.venvs/luca), installs the Python
 packages the chosen apps need, tells you about any Arch packages they need
@@ -26,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import shutil
 import signal
@@ -37,6 +44,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 DEFAULT_VENV = Path.home() / ".venvs" / "luca"
+SETTINGS = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "luca-bar" / "settings.json"
+SECRET_KEYS = {"token", "obs_password", "discord_client_secret"}
 
 
 @dataclass(eq=False)  # compared by identity, so apps can go in sets and dicts
@@ -96,6 +105,65 @@ def ask(prompt: str, default: str = "", secret: bool = False, yes: bool = False)
     except EOFError:
         answer = ""
     return answer or default
+
+
+# --------------------------------------------------------------------------
+# Remembered answers
+# --------------------------------------------------------------------------
+def load_settings() -> dict:
+    try:
+        return json.loads(SETTINGS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(values: dict) -> None:
+    """Private to you: the folder is 0700 and the file 0600, written so it's
+    never readable by anyone else, even for a moment."""
+    values = {k: v for k, v in values.items() if v is not None}
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.parent.chmod(0o700)
+    tmp = SETTINGS.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(values, f, indent=2)
+    tmp.replace(SETTINGS)
+
+
+class Answers:
+    """Answers given on the command line win; then saved ones (unless
+    --reconfigure); otherwise ask, and remember what was said."""
+
+    def __init__(self, args):
+        self.args, self.yes = args, args.yes
+        self.saved = {} if args.reconfigure else load_settings()
+        self.new: dict = {}
+
+    def text(self, key: str, given, prompt: str, secret: bool = False) -> str:
+        if given not in (None, ""):
+            value = given
+        elif key in self.saved:
+            value = self.saved[key]
+            shown = "saved ✓" if secret else value
+            say(f"  {prompt}: {shown or '(none)'}  (saved; --reconfigure to change)")
+        else:
+            value = ask(prompt, secret=secret, yes=self.yes)
+        self.new[key] = value
+        return value
+
+    def flag(self, key: str, given: bool, prompt: str, default: bool = False) -> bool:
+        if given:
+            value = True
+        elif key in self.saved:
+            value = bool(self.saved[key])
+        else:
+            value = confirm(prompt, default, self.yes)
+        self.new[key] = value
+        return value
+
+    def remember(self) -> None:
+        # a blank answer (e.g. no OBS password) is remembered too, so it isn't asked again
+        save_settings({**load_settings(), **{k: v for k, v in self.new.items() if v is not None}})
 
 
 def confirm(prompt: str, default: bool = True, yes: bool = False) -> bool:
@@ -178,7 +246,7 @@ def check_system(apps: list[App], yes: bool, skip: bool) -> None:
         run(["sudo", "pacman", "-S", "--needed", "--noconfirm", *packages])
 
 
-def app_options(app: App, args, yes: bool) -> list[str] | None:
+def app_options(app: App, args, answers: "Answers") -> list[str] | None:
     """The extra settings each app needs. None means skip this app."""
     opts: list[str] = []
     if args.host:
@@ -187,35 +255,38 @@ def app_options(app: App, args, yes: bool) -> list[str] | None:
         opts += ["--token", args.token]
     k = app.key
     if k == "weather":
-        city = args.city or ask("Your city for the weather (e.g. Berlin, or Portland, Oregon)", yes=yes)
+        city = answers.text("city", args.city, "Your city for the weather (e.g. Berlin, or Portland, Oregon)")
         if not city:
             say("  ⏭️  Skipping Weather Den: it needs a city (--city)")
             return None
         opts += ["--city", city]
-        if args.fahrenheit or confirm("Fahrenheit (°F) instead of °C?", False, yes):
+        if answers.flag("fahrenheit", args.fahrenheit, "Fahrenheit (°F) instead of °C?"):
             opts.append("--fahrenheit")
     elif k == "stream-chat":
-        twitch = args.twitch or ask("Your Twitch channel name (blank to skip)", yes=yes)
+        twitch = answers.text("twitch", args.twitch, "Your Twitch channel name (blank to skip)")
         if not twitch:
             say("  ⏭️  Skipping Stream Chat: it needs a channel (--twitch). "
                 "For YouTube, install it from its folder with your video ID.")
             return None
         opts += ["--twitch", twitch]
     elif k == "on-air":
-        pw = args.obs_password if args.obs_password is not None else \
-            ask("OBS WebSocket password (blank if none / no OBS)", secret=True, yes=yes)
+        pw = answers.text("obs_password", args.obs_password,
+                          "OBS WebSocket password (blank if none / no OBS)", secret=True)
         if pw:
             opts += ["--obs-password", pw]
     elif k == "discord":
-        cid = args.discord_client_id or ask("Discord app Client ID for rich mode (blank = basic mode)", yes=yes)
+        cid = answers.text("discord_client_id", args.discord_client_id,
+                           "Discord app Client ID for rich mode (blank = basic mode)")
         if cid:
-            secret = args.discord_client_secret or ask("Discord app Client Secret", secret=True, yes=yes)
+            secret = answers.text("discord_client_secret", args.discord_client_secret,
+                                  "Discord app Client Secret", secret=True)
             if secret:
                 opts += ["--client-id", cid, "--client-secret", secret]
-                say("  💡 After installing, open Discord: it'll ask you once to Authorize Luca.")
-    elif k == "pc-stats" and args.fahrenheit:
+                if not (SETTINGS.parent.parent / "luca-discord" / "token.json").exists():
+                    say("  💡 After installing, open Discord: it'll ask you once to Authorize Luca.")
+    elif k == "pc-stats" and (args.fahrenheit or answers.saved.get("fahrenheit")):
         opts.append("--fahrenheit")
-    if k == "clock" and args.twelve_hour:
+    if k == "clock" and (args.twelve_hour or answers.saved.get("twelve_hour")):
         opts.append("--12h")
     return opts
 
@@ -228,15 +299,20 @@ def install(apps: list[App], args) -> None:
     if "den" not in picked and len(picked & ALWAYS_ON) >= 2:
         if confirm("You picked more than one always-on app. Add Luca's Den so they take turns?", True, yes):
             apps.append(BY_KEY["den"])
+    answers = Answers(args)
+    if args.host or args.token:
+        answers.new.update(host=args.host, token=args.token)
     say("\nAnswer a few questions (Enter keeps the default):")
     plans = []
     for a in apps:
         say(f"\n• {a.key}: {a.blurb}")
-        opts = app_options(a, args, yes)
+        opts = app_options(a, args, answers)
         if opts is not None:
             plans.append((a, opts))
     if not plans:
         raise SystemExit("Nothing to install.")
+    answers.remember()
+    say(f"\n🔒 Your answers are saved in {SETTINGS} (only you can read it), so a reinstall won't ask again.")
 
     packages = {p for a, _ in plans for p in a.pip}
     check_system([a for a, _ in plans], yes, args.no_system)
@@ -380,6 +456,20 @@ def uninstall(apps: list[App], args) -> None:
             run([py, str(REPO / a.folder / a.script), "--uninstall"])
         else:
             say(f"  {a.key}: not installed")
+    if SETTINGS.exists():
+        say(f"\n🔒 Kept your saved answers in {SETTINGS} for next time. "
+            "Delete them with: python install.py --forget")
+
+
+def forget() -> None:
+    if SETTINGS.exists():
+        SETTINGS.unlink()
+        say(f"🗑️  Deleted your saved answers ({SETTINGS}).")
+    else:
+        say("No saved answers to delete.")
+    token = SETTINGS.parent.parent / "luca-discord" / "token.json"
+    if token.exists():
+        say(f"   Your Discord login is separate, in {token}. Delete it too if you want Discord to ask again.")
 
 
 def main() -> None:
@@ -390,6 +480,8 @@ def main() -> None:
     ap.add_argument("--uninstall", action="store_true", help="stop the given apps starting at login")
     ap.add_argument("--check", action="store_true",
                     help="try the apps on the bar for a few seconds each, without installing")
+    ap.add_argument("--reconfigure", action="store_true", help="ask everything again instead of using saved answers")
+    ap.add_argument("--forget", action="store_true", help="delete the saved answers and stop")
     ap.add_argument("--seconds", type=float, default=12, help="with --check: how long each app runs (default 12)")
     ap.add_argument("--yes", "-y", action="store_true", help="don't ask: use the answers given and defaults")
     ap.add_argument("--host", help="the BUSY Bar's address over Wi-Fi (default: USB)")
@@ -411,6 +503,11 @@ def main() -> None:
         ap.error(f"unknown app(s): {', '.join(unknown)}. Choose from: {', '.join(BY_KEY)}")
     if args.list:
         return show_list()
+    if args.forget:
+        return forget()
+    saved = {} if args.reconfigure else load_settings()
+    args.host = args.host or saved.get("host")
+    args.token = args.token or saved.get("token")
 
     if args.all:
         apps = list(APPS)

@@ -76,11 +76,17 @@ press **Enter for all of them**. Then it:
 | `python install.py now-playing pc-stats` | Just these apps |
 | `python install.py --all --city "Berlin" --twitch yourchannel --yes` | Everything, no questions asked |
 | `python install.py --list` | What's available, and what's installed |
+| `python install.py --reconfigure` | Ask everything again instead of using your saved answers |
+| `python install.py --forget` | Delete your saved answers (passwords and keys too) |
 | `python install.py --check` | Try each app on the bar for a few seconds and report any trouble, installing nothing |
 | `python install.py --uninstall clock` | Stop an app (or `--all`) starting at login |
 
 Not sure everything works with your bar yet? Run `python install.py --check` first: each app
 shows its demo on the bar for 12 seconds, one at a time, then you get a ✅ or ⚠️ for each.
+
+🔒 Your answers (city, channel, OBS password, Discord keys, the bar's address and key) are
+saved in `~/.config/luca-bar/settings.json`, which only you can read. Uninstalling keeps them,
+so a reinstall doesn't ask again.
 
 Run it again any time: it updates the apps you pick. Afterwards, check on everything with
 `~/.venvs/luca/bin/python luca-den/luca_den.py --status`.
