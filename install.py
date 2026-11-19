@@ -71,7 +71,7 @@ APPS = [
     App("weather", "luca-weather-den", "weather_den.py", "luca-weather-den",
         "live local weather (asks for your city)", ["pillow", "busylib"]),
     App("pack-focus", "luca-pack-focus", "pack_focus.py", "luca-pack-focus",
-        "a Pomodoro focus timer (selector to APPS, then Start)", ["pillow", "busylib"]),
+        "a Pomodoro focus timer (selector on CUSTOM, then Start)", ["pillow", "busylib"]),
     App("clock", "luca-aero-clock", "aero_clock.py", "luca-aero-clock",
         "a desk clock with the real sky", ["pillow", "busylib"]),
     App("on-air", "luca-on-air", "on_air.py", "luca-on-air",
