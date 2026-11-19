@@ -214,7 +214,7 @@ async def animate(sign: Sign) -> None:
                     pass
         except BarOffline as err:
             if sign.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; I'll keep trying quietly")
             sign.online = sign.on_bar = False
             await asyncio.sleep(retry)
             retry = min(retry * 2, 30)

@@ -76,7 +76,11 @@ press **Enter for all of them**. Then it:
 | `python install.py now-playing pc-stats` | Just these apps |
 | `python install.py --all --city "Berlin" --twitch yourchannel --yes` | Everything, no questions asked |
 | `python install.py --list` | What's available, and what's installed |
+| `python install.py --check` | Try each app on the bar for a few seconds and report any trouble, installing nothing |
 | `python install.py --uninstall clock` | Stop an app (or `--all`) starting at login |
+
+Not sure everything works with your bar yet? Run `python install.py --check` first: each app
+shows its demo on the bar for 12 seconds, one at a time, then you get a ✅ or ⚠️ for each.
 
 Run it again any time: it updates the apps you pick. Afterwards, check on everything with
 `~/.venvs/luca/bin/python luca-den/luca_den.py --status`.

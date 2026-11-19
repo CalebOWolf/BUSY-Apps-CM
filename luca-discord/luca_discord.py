@@ -271,7 +271,7 @@ async def animate(app: Bar) -> None:
                     pass
         except BarOffline as err:
             if app.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; I'll keep trying quietly")
             app.online = app.on_bar = False
             if app.current:
                 app.waiting.appendleft(app.current)

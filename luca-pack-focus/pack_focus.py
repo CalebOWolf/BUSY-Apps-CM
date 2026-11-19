@@ -297,7 +297,7 @@ async def animate(pack: Pack) -> None:
             await asyncio.sleep(1 / pack.fps)
         except BarOffline as err:
             if pack.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); the timer keeps running, "
+                print(f"🔌 BUSY Bar trouble: {err}; the timer keeps running, "
                       "I'll keep trying quietly")
             pack.online = pack.on_bar = False
             await asyncio.sleep(retry)

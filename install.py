@@ -7,6 +7,7 @@ Install your Luca apps for the BUSY Bar in one go (Linux, systemd).
     python install.py now-playing clock   just these
     python install.py --list              what's available, and what's installed
     python install.py --uninstall clock   stop some (or --uninstall --all) starting at login
+    python install.py --check             try each app on the bar for a few seconds, install nothing
 
 It makes Luca's Python environment (~/.venvs/luca), installs the Python
 packages the chosen apps need, tells you about any Arch packages they need
@@ -27,8 +28,10 @@ import argparse
 import getpass
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -256,6 +259,120 @@ def install(apps: list[App], args) -> None:
     say("Watch one:            journalctl --user -u luca-<app> -f")
 
 
+# --------------------------------------------------------------------------
+# Trying the apps out on the bar, without installing anything
+TROUBLE = ("BUSY Bar trouble", "BUSY Bar:", "Traceback", "Error:", "ModuleNotFoundError")
+
+
+def tiny_png(w: int, h: int, rgb: tuple[int, int, int]) -> bytes:
+    """A plain one-color PNG, made with the standard library (no Pillow here)."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\0" + bytes(rgb) * w for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def check_bar(host: str, token: str | None) -> bool:
+    """Draw a blue test card, then take it away."""
+    sys.path.insert(0, str(REPO / "shared"))
+    from busybar import BarOffline, BusyBar, NotOnTop, image  # noqa: E402
+    bar = BusyBar(host, "luca_check", token)
+    try:
+        bar.upload("check.png", tiny_png(72, 16, (40, 120, 230)))
+        shown = bar.draw([image("card", "check.png", 0, 0)], priority=100)
+        time.sleep(1.5)
+        bar.clear()
+    except (BarOffline, NotOnTop) as err:
+        say(f"❌ The BUSY Bar at {host}: {err}")
+        say("   Is it plugged in (USB) or on Wi-Fi? Give its Wi-Fi address with --host, and its API "
+            "key with --token if HTTP access is set to key mode.")
+        return False
+    say(f"✅ The BUSY Bar at {host} answers" + ("" if shown else " (something else was on top)"))
+    return True
+
+
+def try_app(python: str, app: App, args, seconds: float) -> list[str]:
+    """Run one app for a few seconds; returns the worrying lines it printed."""
+    script = REPO / app.folder / app.script
+    cmd = [python, str(script)]
+    if '"--demo"' in script.read_text():
+        cmd.append("--demo")
+    if args.host:
+        cmd += ["--host", args.host]
+    if args.token:
+        cmd += ["--token", args.token]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            env=dict(os.environ, PYTHONUNBUFFERED="1"))
+    try:
+        out, _ = proc.communicate(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        proc.send_signal(signal.SIGINT)  # like Ctrl+C: the app clears its screen and stops
+        try:
+            out, _ = proc.communicate(timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, _ = proc.communicate()
+            out += "\nError: it didn't stop when asked"
+    else:
+        if proc.returncode not in (0, None):
+            out += f"\nError: it stopped by itself (exit code {proc.returncode})"
+    seen, problems = set(), []
+    for line in out.splitlines():
+        line = line.strip()
+        if any(t in line for t in TROUBLE) and line not in seen:
+            seen.add(line)
+            problems.append(line)
+    return problems
+
+
+def check(apps: list[App], args) -> None:
+    host = args.host or "10.0.4.20"
+    venv_python = Path(args.venv).expanduser() / "bin" / "python"
+    python = str(venv_python) if venv_python.exists() else sys.executable
+    say("🔎 Trying the apps on your BUSY Bar. Nothing gets installed.\n")
+    if not check_bar(host, args.token):
+        raise SystemExit(1)
+    if python == sys.executable:
+        say(f"   (No {venv_python} yet, so using this Python; apps whose packages are missing will say so.)")
+    seconds = args.seconds
+    results = []
+    for a in apps:
+        if a.key == "den":
+            results.append((a, "skip", "it only takes turns between the others; try it with them running"))
+            continue
+        if unit_exists(a.service) and subprocess.run(
+                ["systemctl", "--user", "is-active", "--quiet", f"{a.service}.service"]).returncode == 0:
+            results.append((a, "skip", f"already running as a service (stop it: systemctl --user stop {a.service})"))
+            continue
+        say(f"\n▶️  {a.key}: watch the bar for {seconds:g} s…")
+        problems = try_app(python, a, args, seconds)
+        results.append((a, "bad" if problems else "ok", problems))
+
+    say("\n" + "─" * 60)
+    for a, status, info in results:
+        if status == "ok":
+            say(f"✅ {a.key}")
+        elif status == "skip":
+            say(f"⏭️  {a.key}: {info}")
+        else:
+            say(f"⚠️  {a.key}:")
+            for line in info[:4]:
+                say(f"     {line}")
+            if len(info) > 4:
+                say(f"     …and {len(info) - 4} more")
+    if "pack-focus" in {a.key for a, s, _ in results if s == "ok"}:
+        say("\n💡 Pack Focus only shows itself with the bar's selector on CUSTOM, so it may have stayed hidden.")
+    bad = [a.key for a, s, _ in results if s == "bad"]
+    if bad:
+        say(f"\nSomething to look at in: {', '.join(bad)}. Everything else looks fine.")
+    else:
+        say("\n✨ No trouble seen. Install with:  python install.py")
+
+
 def uninstall(apps: list[App], args) -> None:
     python = Path(args.venv).expanduser() / "bin" / "python"
     py = str(python) if python.exists() else sys.executable
@@ -273,6 +390,9 @@ def main() -> None:
     ap.add_argument("--all", action="store_true", help="every app")
     ap.add_argument("--list", action="store_true", help="list the apps and what's installed")
     ap.add_argument("--uninstall", action="store_true", help="stop the given apps starting at login")
+    ap.add_argument("--check", action="store_true",
+                    help="try the apps on the bar for a few seconds each, without installing")
+    ap.add_argument("--seconds", type=float, default=12, help="with --check: how long each app runs (default 12)")
     ap.add_argument("--yes", "-y", action="store_true", help="don't ask: use the answers given and defaults")
     ap.add_argument("--host", help="the BUSY Bar's address over Wi-Fi (default: USB)")
     ap.add_argument("--token", default=os.environ.get("BUSYBAR_TOKEN"), help="the bar's API key, if it needs one")
@@ -298,6 +418,8 @@ def main() -> None:
         apps = list(APPS)
     elif args.apps:
         apps = [BY_KEY[a] for a in dict.fromkeys(args.apps)]
+    elif args.check:
+        apps = list(APPS)
     elif args.uninstall:
         ap.error("say which apps to uninstall, or --all")
     elif args.yes:
@@ -307,6 +429,8 @@ def main() -> None:
         apps = pick_from_menu()
         if not apps:
             raise SystemExit("No apps picked.")
+    if args.check:
+        return check(apps, args)
     if args.uninstall:
         return uninstall(apps, args)
     install(apps, args)
