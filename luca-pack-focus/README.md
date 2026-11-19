@@ -90,8 +90,14 @@ Add your own `--focus`, `--break`, `--long`, `--rounds` or `--auto`; they're sav
 Started at login, Luca **waits out of sight** so he doesn't take over the bar all day.
 When you want to focus:
 
-1. Move the bar's selector to **CUSTOM**. Luca comes up, ready.
-2. Press **Start**.
+1. Turn the bar's selector to **APPS**. Luca pops up for 15 seconds, ready.
+2. Press **Start** while he's there.
+
+If you don't, or you press **Back**, he steps aside so your other apps show again. Turn the
+selector off APPS and back to call him again. He also pops up for 15 seconds when he starts.
+
+> Why not CUSTOM? On the BUSY Bar, BUSY and CUSTOM are the bar's own two built-in timers,
+> so on CUSTOM the bar shows its timer and Start runs that one, not Luca's.
 
 Once the timer is running he stays on the bar until the part is done, wherever the selector
 is. If you leave him waiting between parts or paused, he steps aside after 10 minutes.
