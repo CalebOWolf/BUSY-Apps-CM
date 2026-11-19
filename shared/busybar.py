@@ -106,7 +106,11 @@ class BusyBar:
 
     def clear(self) -> None:
         self.presence.leave()
-        self._call("DELETE", "/display/draw", params={"application_name": self.app})
+        try:
+            self._call("DELETE", "/display/draw", params={"application_name": self.app})
+        except BarOffline as err:
+            if "not displaying anything" not in str(err):
+                raise  # already off the bar (another app was on top) is fine
 
     def answers_buttons(self) -> bool:
         """True while this app is on the bar and no higher-priority app of ours is."""
