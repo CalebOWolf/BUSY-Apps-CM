@@ -42,13 +42,50 @@ is where those ideas live.
 
 ## 🚀 Getting Started
 
-1. **Clone** the repo:
-   ```bash
-   git clone https://github.com/CalebOWolf/BUSY-Apps-CM.git
-   ```
-2. **Pick** an app folder that looks fun.
-3. **Follow** the instructions inside it to load it onto your BUSY Bar.
-4. **Enjoy** your extra-busy (or extra-chill) desk. 😎
+**Clone** the repo:
+
+```bash
+git clone https://github.com/CalebOWolf/BUSY-Apps-CM.git
+```
+
+```bash
+cd BUSY-Apps-CM
+```
+
+### ⚡ Install everything at once (Linux)
+
+```bash
+python install.py
+```
+
+It shows a menu of the apps. Pick some (`1 4 6`, or names like `now-playing clock`), or
+press **Enter for all of them**. Then it:
+
+1. Makes Luca's Python environment (`~/.venvs/luca`) and installs just the packages your
+   apps need
+2. Tells you about any Arch packages they need (like `playerctl` or `cava`) and offers to
+   install them with `pacman`
+3. Asks only what an app needs: your **city** for Weather Den, your **Twitch channel** for
+   Stream Chat, and optional **OBS** and **Discord** details (Enter skips)
+4. Sets each app to **start at login**
+
+| Command | Does |
+| :-- | :-- |
+| `python install.py` | Pick from the menu |
+| `python install.py --all` | Every app (still asks for your city and channel) |
+| `python install.py now-playing pc-stats` | Just these apps |
+| `python install.py --all --city "Berlin" --twitch yourchannel --yes` | Everything, no questions asked |
+| `python install.py --list` | What's available, and what's installed |
+| `python install.py --uninstall clock` | Stop an app (or `--all`) starting at login |
+
+Run it again any time: it updates the apps you pick. Afterwards, check on everything with
+`~/.venvs/luca/bin/python luca-den/luca_den.py --status`.
+
+### 🧩 Or one at a time
+
+Every app folder has its own README and its own `--install`, if you'd rather set them up
+by hand or try one first. **Pick** a folder that looks fun, **follow** its instructions, and
+**enjoy** your extra-busy (or extra-chill) desk. 😎
 
 ## 🤝 Contributing
 

@@ -77,7 +77,9 @@ def install(name: str, description: str, command: list[str], token: str | None =
     path.chmod(0o600)  # it may hold your API key
     print(f"📝 Wrote {path}")
     systemctl("daemon-reload")
-    systemctl("enable", "--now", f"{name}.service")
+    systemctl("enable", f"{name}.service")
+    # restart (not just start): a re-install then runs the new code and settings right away
+    systemctl("restart", f"{name}.service")
     print("✨ Done! " + (done_message or f"{description} now starts at login."))
     print(f"   Watch what it's up to:  journalctl --user -u {name} -f")
 
