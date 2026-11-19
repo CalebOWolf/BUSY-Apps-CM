@@ -83,6 +83,9 @@ APPS = [
         "Twitch / YouTube live chat (asks for your channel)", ["pillow", "busylib"]),
     App("blockland", "luca-blockland", "blockland.py", "luca-blockland",
         "Luca and a blocky landscape while your Minecraft instance runs", ["pillow", "busylib"]),
+    App("updates", "luca-update-howl", "update_howl.py", "luca-update-howl",
+        "your Arch updates (repos + AUR via paru), and when to reboot", ["pillow", "busylib"],
+        {"checkupdates": "pacman-contrib"}),
     App("den", "luca-den", "luca_den.py", "luca-den",
         "lets stats, weather and clock take turns", ["pillow"]),
 ]
@@ -239,7 +242,7 @@ def check_system(apps: list[App], yes: bool, skip: bool) -> None:
     if needed:
         say(f"   needed:   {' '.join(sorted(needed))}")
     if nice:
-        say(f"   optional: {' '.join(sorted(nice))}  (the visualizer and volume wheel)")
+        say(f"   optional: {' '.join(sorted(nice))}  (nice extras, like Now Playing's visualizer)")
     packages = sorted(needed | nice)
     if skip or not shutil.which("pacman"):
         say(f"   Install them with your package manager, e.g.  sudo pacman -S --needed {' '.join(packages)}")
