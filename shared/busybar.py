@@ -49,6 +49,7 @@ class BusyBar:
         self.base = f"http://{host}/api"
         self.token = token
         self.presence = Presence(app, 50)
+        self._shown: dict[str, str] = {}  # element id -> display, from the last draw
 
     def _call(self, method: str, path: str, params: dict | None = None,
               body: bytes | None = None, content_type: str | None = None) -> dict:
@@ -90,7 +91,12 @@ class BusyBar:
         Returns False (after a short pause, so we don't hammer the bar) when
         the bar is busy showing something more important. That's normal, not
         an error: just try again next frame."""
-        payload = {"application_name": self.app, "priority": priority, "elements": elements}
+        # The bar keeps elements from earlier draws by id, so a page with fewer
+        # pieces would leave the old ones showing underneath. Blank them out.
+        ids = {el["id"] for el in elements}
+        gone = [rect(i, 0, 0, 1, 1, "#00000000", display=d)
+                for i, d in self._shown.items() if i not in ids]
+        payload = {"application_name": self.app, "priority": priority, "elements": gone + elements}
         if led:
             payload["led_notification_color"] = led
         try:
@@ -100,12 +106,14 @@ class BusyBar:
             self.presence.leave()
             time.sleep(1)
             return False
+        self._shown = {el["id"]: el.get("display", "front") for el in elements}
         self.presence.priority = priority
         self.presence.beat()
         return True
 
     def clear(self) -> None:
         self.presence.leave()
+        self._shown = {}
         try:
             self._call("DELETE", "/display/draw", params={"application_name": self.app})
         except BarOffline as err:
