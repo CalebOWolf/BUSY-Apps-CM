@@ -37,6 +37,7 @@ is where those ideas live.
 | [💜 Luca Stream Chat](luca-stream-chat/) | Your Twitch (no login needed) or YouTube live chat scrolling by, with sparkling gold alerts for subs, raids, cheers and Super Chats | ✅ |
 | [⛏️ Luca Blockland](luca-blockland/) | When your Minecraft instance starts, Luca grabs a pickaxe beside a blocky landscape that scrolls by, day or starry night, with your instance's name and how long you've played | ✅ |
 | [🏠 Luca's Den](luca-den/) | Home base: the always-on apps (stats, weather, clock) take turns with glossy channel-switch cards, and `--status` checks on every app | ✅ |
+| [📶 BUSY Speedtest](busy-speedtest/) | A simple internet speed test: ping, download and upload, on the front strip and the back screen | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install
 > and use it. The code they share for talking to the bar lives in [`shared/`](shared/).
