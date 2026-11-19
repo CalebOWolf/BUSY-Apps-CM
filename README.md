@@ -35,6 +35,7 @@ is where those ideas live.
 | [🔴 Luca On Air](luca-on-air/) | An ON AIR sign that lights up by itself when OBS is live or recording, you're in a call, or your camera is on, with Luca in a gaming headset | ✅ |
 | [💬 Luca Discord](luca-discord/) | Discord on the bar: your voice call with who's talking, mute status (OK mutes you), and new messages, in glossy blurple Aero | ✅ |
 | [💜 Luca Stream Chat](luca-stream-chat/) | Your Twitch (no login needed) or YouTube live chat scrolling by, with sparkling gold alerts for subs, raids, cheers and Super Chats | ✅ |
+| [⛏️ Luca Blockland](luca-blockland/) | When your Minecraft instance starts, Luca grabs a pickaxe beside a blocky landscape that scrolls by, day or starry night, with your instance's name and how long you've played | ✅ |
 | [🏠 Luca's Den](luca-den/) | Home base: the always-on apps (stats, weather, clock) take turns with glossy channel-switch cards, and `--status` checks on every app | ✅ |
 
 > 💡 **Tip:** Each app lives in its own folder with its own notes on how to install

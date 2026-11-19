@@ -81,6 +81,8 @@ APPS = [
         "Discord calls and messages", ["pillow", "dbus-fast", "busylib"], {"pactl": "libpulse"}),
     App("stream-chat", "luca-stream-chat", "stream_chat.py", "luca-stream-chat",
         "Twitch / YouTube live chat (asks for your channel)", ["pillow", "busylib"]),
+    App("blockland", "luca-blockland", "blockland.py", "luca-blockland",
+        "Luca and a blocky landscape while your Minecraft instance runs", ["pillow", "busylib"]),
     App("den", "luca-den", "luca_den.py", "luca-den",
         "lets stats, weather and clock take turns", ["pillow"]),
 ]
@@ -284,6 +286,10 @@ def app_options(app: App, args, answers: "Answers") -> list[str] | None:
                 opts += ["--client-id", cid, "--client-secret", secret]
                 if not (SETTINGS.parent.parent / "luca-discord" / "token.json").exists():
                     say("  💡 After installing, open Discord: it'll ask you once to Authorize Luca.")
+    elif k == "blockland":
+        name = answers.text("mc_instance", args.mc_instance,
+                            'Your Minecraft instance\'s name (Enter for "Wolf Howl", * for any)')
+        opts += ["--instance", name or "Wolf Howl"]
     elif k == "pc-stats" and (args.fahrenheit or answers.saved.get("fahrenheit")):
         opts.append("--fahrenheit")
     if k == "clock" and (args.twelve_hour or answers.saved.get("twelve_hour")):
@@ -489,6 +495,7 @@ def main() -> None:
     ap.add_argument("--city", help="Weather Den: your city")
     ap.add_argument("--fahrenheit", action="store_true", help="Weather / PC Stats: °F")
     ap.add_argument("--12h", dest="twelve_hour", action="store_true", help="Aero Clock: 12-hour time")
+    ap.add_argument("--mc-instance", help="Blockland: your Minecraft instance's name")
     ap.add_argument("--twitch", help="Stream Chat: your Twitch channel")
     ap.add_argument("--obs-password", default=None, help="On Air: OBS WebSocket password")
     ap.add_argument("--discord-client-id", help="Discord: your application's Client ID (rich mode)")
