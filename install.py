@@ -62,7 +62,7 @@ APPS = [
     App("weather", "luca-weather-den", "weather_den.py", "luca-weather-den",
         "live local weather (asks for your city)", ["pillow", "busylib"]),
     App("pack-focus", "luca-pack-focus", "pack_focus.py", "luca-pack-focus",
-        "a Pomodoro focus timer (selector on CUSTOM to start)", ["pillow", "busylib"]),
+        "a Pomodoro focus timer (selector to APPS, then Start)", ["pillow", "busylib"]),
     App("clock", "luca-aero-clock", "aero_clock.py", "luca-aero-clock",
         "a desk clock with the real sky", ["pillow", "busylib"]),
     App("on-air", "luca-on-air", "on_air.py", "luca-on-air",
@@ -364,8 +364,6 @@ def check(apps: list[App], args) -> None:
                 say(f"     {line}")
             if len(info) > 4:
                 say(f"     …and {len(info) - 4} more")
-    if "pack-focus" in {a.key for a, s, _ in results if s == "ok"}:
-        say("\n💡 Pack Focus only shows itself with the bar's selector on CUSTOM, so it may have stayed hidden.")
     bad = [a.key for a, s, _ in results if s == "bad"]
     if bad:
         say(f"\nSomething to look at in: {', '.join(bad)}. Everything else looks fine.")

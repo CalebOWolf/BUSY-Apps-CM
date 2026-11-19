@@ -19,8 +19,9 @@ Luca Notify Den holds your notifications until the break.
     python pack_focus.py --install               # Linux: start at login, wait in the background
     python pack_focus.py --uninstall
 
-Started at login (--install), it waits out of sight: move the bar's selector to
-CUSTOM to bring Luca up, then press Start. Needs Pillow; buttons also need
+Started at login (--install), it waits out of sight: turn the bar's selector to
+APPS and Luca pops up for 15 seconds; press Start to focus. (CUSTOM is the bar's
+own built-in timer, so Luca can't use it.) Needs Pillow; buttons also need
 busylib (pip install pillow busylib).
 """
 
@@ -46,7 +47,8 @@ APP = "luca_pack_focus"
 SERVICE = "luca-pack-focus"
 HOWL_SECONDS = 5
 WAIT_TIMEOUT = 10 * 60   # in the background: step aside if nobody starts the next part
-SUMMON = "custom"        # the selector position that brings Luca up
+SUMMON = "apps"          # turning the selector here brings Luca up for a moment
+SUMMON_SECONDS = 15      # how long he waits for Start before stepping aside
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
 STATS_FILE = CACHE_DIR / "luca-pack-focus.json"
 # Other apps (Luca Notify Den) read this to stay quiet while you focus.
@@ -173,7 +175,9 @@ class Pack:
     def __init__(self, bar: BusyBar, timer: Timer, priority: int, fps: float, background: bool):
         self.bar, self.timer, self.priority, self.fps = bar, timer, priority, fps
         self.background = background
-        self.summoned = not background
+        # in the background Luca shows himself briefly at start, since the bar
+        # doesn't say where the selector is until it moves
+        self.summoned_until = time.monotonic() + SUMMON_SECONDS if background else 0.0
         self.online = False
         self.on_bar = False
         self.slot = 0
@@ -188,6 +192,16 @@ class Pack:
             return True
         # paused or waiting for the next part: stay a while, then step aside
         return time.monotonic() - t.idle_since < WAIT_TIMEOUT and (t.state == "paused" or t.done_rounds)
+
+    @property
+    def summoned(self) -> bool:
+        return time.monotonic() < self.summoned_until
+
+    def summon(self) -> None:
+        self.summoned_until = time.monotonic() + SUMMON_SECONDS
+
+    def dismiss(self) -> None:
+        self.summoned_until = 0.0
 
     def upload_static(self) -> None:
         for phase in art.PHASES:
@@ -309,12 +323,16 @@ async def listen(pack: Pack) -> None:
         t = pack.timer
         if is_selector(event):
             if pack.background:
-                pack.summoned = event.position == SUMMON
-                if pack.summoned:
-                    print("  🐺 Summoned: press Start to begin")
+                if event.position == SUMMON:
+                    pack.summon()
+                    print(f"  🐺 Here! Press Start within {SUMMON_SECONDS} s to focus")
+                else:
+                    pack.dismiss()
             continue
         if not pack.on_bar:
             continue  # buttons belong to the bar while Luca is away
+        if pack.summoned:
+            pack.summon()  # you're using him: keep him up a while longer
         if is_wheel(event):
             if t.adjust(1 if event.delta > 0 else -1):
                 print(f"  ⏱️  {art.PHASE_NAMES[t.phase]}: {art.clock(t.left())}")
@@ -326,6 +344,9 @@ async def listen(pack: Pack) -> None:
             elif event.button == "ok":
                 t.skip()
                 print(f"  ⏭️  On to: {art.PHASE_NAMES[t.phase]}")
+            elif event.button == "back" and pack.background and t.state == "idle" and not t.done_rounds:
+                pack.dismiss()
+                print("  🐾 Stepping aside")
             elif event.button == "back":
                 t.reset()
                 print(f"  ↩️  Starting {art.PHASE_NAMES[t.phase].lower()} over")
@@ -346,7 +367,7 @@ def install(args) -> None:
     if args.auto:
         command.append("--auto")
     service.install(SERVICE, "Luca Pack Focus for the BUSY Bar", command, args.token,
-                    "Luca waits in the background: move the bar's selector to CUSTOM to focus.")
+                    "Luca waits in the background: turn the bar's selector to APPS, then press Start to focus.")
 
 
 def main() -> None:
@@ -360,7 +381,7 @@ def main() -> None:
                     help="focus rounds before a long break (default 4)")
     ap.add_argument("--auto", action="store_true", help="start the next part by itself")
     ap.add_argument("--background", action="store_true",
-                    help="wait out of sight until the selector is moved to CUSTOM "
+                    help="wait out of sight; turning the selector to APPS brings Luca up for a moment "
                          "(what --install uses)")
     ap.add_argument("--host", default="10.0.4.20",
                     help="BUSY Bar address (default: 10.0.4.20, the USB address)")
@@ -400,7 +421,8 @@ def main() -> None:
     if timer.today.sessions:
         print(f"   Today so far: {timer.today.sessions} rounds, {timer.today.minutes:.0f} min")
     if args.background:
-        print(f"🐺 Waiting in the background: move the BUSY Bar's selector to {SUMMON.upper()}.")
+        print(f"🐺 Waiting in the background: turn the BUSY Bar's selector to {SUMMON.upper()}, "
+              f"then press Start within {SUMMON_SECONDS} s.")
     else:
         print(f"🐺 Luca is on the BUSY Bar at {args.host}. Press Start to begin.")
     print("   Start = start/pause, OK = skip, Back = start over, wheel = ±1 min. Ctrl+C to stop.")
