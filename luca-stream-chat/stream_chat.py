@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
 import art  # noqa: E402
 import chat_sources as cs  # noqa: E402
 import service  # noqa: E402
-from busybar import (BarOffline, BusyBar, image, input_events, is_press, is_wheel,  # noqa: E402
+from busybar import (BarOffline, BusyBar, Scroller, image, input_events, is_press, is_wheel,  # noqa: E402
                      mark_running, stop_running)
 from quiet import QUIET_FILES  # noqa: E402
 
@@ -69,6 +69,7 @@ class Chatbox:
     def __init__(self, bar: BusyBar, platforms: str, alerts_only: bool, only_live: bool,
                  prio_chat: int, prio_alert: int, fps: float):
         self.bar, self.platforms, self.alerts_only, self.only_live = bar, platforms, alerts_only, only_live
+        self.line = Scroller(bar, "line", art.AREA_X, art.TEXT_Y, art.AREA_W)
         self.prio_chat, self.prio_alert, self.fps = prio_chat, prio_alert, fps
         self.queue: asyncio.Queue = asyncio.Queue()
         self.chat: deque = deque(maxlen=MAX_WAITING_CHAT)
@@ -106,7 +107,7 @@ class Chatbox:
     def present(self, item) -> None:
         slot = 1 - self.slot
         strip, loop = art.strip(item)
-        self.bar.upload_image(f"line_{slot}.png", strip)
+        self.line.set(strip)
         self.slot, self.loop, self.offset, self.hold = slot, loop, 0, HOLD_FRAMES
         self.current, self.shown_at = item, time.monotonic()
         if item.alert:
@@ -140,7 +141,7 @@ class Chatbox:
         kind = "alert" if item.alert else item.platform
         pose = "hop" if item.alert else "read"
         return [image("panel", f"panel_{kind}_{self.frame % art.PANEL_FRAMES}.png", 0, 0),
-                image("line", f"line_{self.slot}.png", art.AREA_X - self.offset, art.TEXT_Y),
+                self.line.element(art.AREA_X - self.offset),
                 image("luca", f"tile_{pose}_{(self.frame // 3) % 2}.png", 0, 0),
                 image("log", f"back_{self.back_slot}.png", 0, 0, display="back")]
 
@@ -179,7 +180,7 @@ async def animate(box: Chatbox) -> None:
             if box.current:
                 await asyncio.to_thread(box.upload_back)
                 prio = box.prio_alert if box.current.alert else box.prio_chat
-                await asyncio.to_thread(box.bar.draw, box.elements(), prio, box.led)
+                await asyncio.to_thread(lambda: box.bar.draw(box.elements(), prio, box.led))
                 box.led, box.on_bar = None, True
                 box.frame += 1
                 await asyncio.sleep(1 / box.fps)

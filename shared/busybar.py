@@ -49,7 +49,7 @@ class BusyBar:
         self.base = f"http://{host}/api"
         self.token = token
         self.presence = Presence(app, 50)
-        self._shown: dict[str, str] = {}  # element id -> display, from the last draw
+        self._shown: set[str] = set()  # element ids from the last draw
 
     def _call(self, method: str, path: str, params: dict | None = None,
               body: bytes | None = None, content_type: str | None = None) -> dict:
@@ -92,11 +92,11 @@ class BusyBar:
         the bar is busy showing something more important. That's normal, not
         an error: just try again next frame."""
         # The bar keeps elements from earlier draws by id, so a page with fewer
-        # pieces would leave the old ones showing underneath. Blank them out.
+        # pieces would leave the old ones showing underneath: start afresh.
         ids = {el["id"] for el in elements}
-        gone = [rect(i, 0, 0, 1, 1, "#00000000", display=d)
-                for i, d in self._shown.items() if i not in ids]
-        payload = {"application_name": self.app, "priority": priority, "elements": gone + elements}
+        if any(i not in ids for i in self._shown):
+            self._delete()
+        payload = {"application_name": self.app, "priority": priority, "elements": elements}
         if led:
             payload["led_notification_color"] = led
         try:
@@ -106,14 +106,17 @@ class BusyBar:
             self.presence.leave()
             time.sleep(1)
             return False
-        self._shown = {el["id"]: el.get("display", "front") for el in elements}
+        self._shown = {el["id"] for el in elements}
         self.presence.priority = priority
         self.presence.beat()
         return True
 
     def clear(self) -> None:
         self.presence.leave()
-        self._shown = {}
+        self._delete()
+
+    def _delete(self) -> None:
+        self._shown = set()
         try:
             self._call("DELETE", "/display/draw", params={"application_name": self.app})
         except BarOffline as err:
@@ -128,6 +131,39 @@ class BusyBar:
 # --------------------------------------------------------------------------
 # Display elements
 # --------------------------------------------------------------------------
+class Scroller:
+    """
+    A long line of text in a window on the front screen. The bar won't take a
+    picture wider than its 72-pixel screen, so instead of sliding one long
+    strip along, we upload just the part you can see whenever it moves.
+
+        line = Scroller(bar, "msg", x=20, y=4, width=52)
+        line.set(strip_image)
+        elements.append(line.element(20 - offset))  # strip's left edge on screen
+    """
+
+    def __init__(self, bar: "BusyBar", name: str, x: int, y: int, width: int):
+        self.bar, self.name, self.x, self.y, self.width = bar, name, x, y, width
+        self.strip = None
+        self.version = 0
+        self.slot = 0
+        self.shown = None  # (version, x) currently uploaded
+
+    def set(self, strip) -> None:
+        self.strip = strip
+        self.version += 1
+
+    def element(self, x: int) -> dict:
+        """Uploads the visible part if it moved (call this off the event loop)."""
+        if (self.version, x) != self.shown:
+            left = self.x - x
+            view = self.strip.crop((left, 0, left + self.width, self.strip.height))
+            slot = 1 - self.slot
+            self.bar.upload_image(f"{self.name}_{slot}.png", view)
+            self.slot, self.shown = slot, (self.version, x)
+        return image(self.name, f"{self.name}_{self.slot}.png", self.x, self.y)
+
+
 def image(id_: str, path: str, x: int, y: int, display: str = "front") -> dict:
     return {"id": id_, "type": "image", "path": path, "display": display, "x": x, "y": y}
 

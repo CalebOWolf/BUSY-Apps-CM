@@ -48,7 +48,7 @@ import art  # noqa: E402
 import media  # noqa: E402
 import service  # noqa: E402
 import visualizer  # noqa: E402
-from busybar import BarOffline, BusyBar, image, input_events, is_press, is_wheel  # noqa: E402
+from busybar import BarOffline, BusyBar, Scroller, image, input_events, is_press, is_wheel  # noqa: E402
 from busybar import rect as bar  # noqa: E402
 
 APP = "luca_now_playing"
@@ -83,6 +83,7 @@ class Screen:
 
     def __init__(self, bar_: BusyBar, player, linger: float, volume: media.Volume):
         self.bar = bar_
+        self.line = Scroller(bar_, "song", art.TEXT_X, art.TEXT_Y, art.TEXT_W)
         self.player = player
         self.linger = linger
         self.volume = volume
@@ -143,7 +144,7 @@ class Screen:
         else:
             text = "No music"
         strip, loop = art.text_strip(text, dim=not track.playing)
-        self.bar.upload_image(f"strip_{slot}.png", strip)
+        self.line.set(strip)
         self.bar.upload_image(f"back_{slot}.png", art.back_screen(
             track.title, track.artist, track.album, track.playing, self.cover(track.art_url)))
         had_song = self.shown_key is not None and bool(self.shown_key[0])
@@ -187,7 +188,7 @@ class Screen:
         if self.viz and self.viz.enabled and t.playing:
             els += self.equalizer()
         els += [
-            image("song", f"strip_{self.slot}.png", song_x, art.TEXT_Y),
+            self.line.element(song_x),
             image("luca", f"tile_{pose}_{n}.png", 0, 0),
             image("window", f"back_{self.slot}.png", 0, 0, display="back"),
         ]
@@ -318,7 +319,7 @@ async def animate(screen: Screen, fps: float) -> None:
                 if not screen.shown:
                     print("🐺 Luca hops onto the bar")
                     screen.shown = True
-                await asyncio.to_thread(screen.bar.draw, screen.elements())
+                await asyncio.to_thread(lambda: screen.bar.draw(screen.elements()))
                 screen.frame += 1
                 await asyncio.sleep(1 / fps)
             else:
