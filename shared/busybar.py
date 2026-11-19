@@ -49,7 +49,7 @@ class NotOnTop(Exception):
 
 REFUSALS_BEFORE_RESET = 3   # refused drawings in a row before the app starts over
 LOG_AGAIN_AFTER = 300       # seconds before the same complaint is printed again
-BLANK = "blank.png"         # a transparent pixel, standing in for pieces that went away
+BLANK = "blank.png"         # one dark pixel, standing in (out of sight) for pictures that went away
 
 
 def _reason(detail: str) -> str:
@@ -61,6 +61,20 @@ def _reason(detail: str) -> str:
     return " ".join(str(detail).split()) or "no reason given"
 
 
+def _png_pixel() -> bytes:
+    """A 1x1 dark PNG, made without Pillow."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\0\x08\x08\x10")) + chunk(b"IEND", b""))
+
+
+_BLANK_PNG = _png_pixel()
+
+
 class BusyBar:
     def __init__(self, host: str, app: str, token: str | None = None):
         self.host = host
@@ -68,7 +82,7 @@ class BusyBar:
         self.base = f"http://{host}/api"
         self.token = token
         self.presence = Presence(app, 50)
-        self._shown: dict[str, str] = {}   # element id -> display, from the last draw
+        self._shown: dict[str, tuple[str, str]] = {}  # element id -> (type, display), last draw
         self._sent: dict[str, int] = {}    # file name -> hash of what we last uploaded
         self._refused = 0
         self._logged: dict[str, float] = {}
@@ -150,6 +164,8 @@ class BusyBar:
         except BarRefused as err:
             if self._blanks_ok and len(payload["elements"]) > len(elements):
                 self._blanks_ok = False  # this bar won't take our blanks: clear instead
+                self._log_once(f"{err}; clearing the screen between pages instead "
+                               "(you may see a blink)")
                 return self.draw(elements, priority, led)
             self._refused += 1
             self._log_once(str(err))
@@ -160,7 +176,7 @@ class BusyBar:
             time.sleep(0.5)
             return False
         self._refused = 0
-        self._shown = {el["id"]: el.get("display", "front") for el in elements}
+        self._shown = {el["id"]: (el["type"], el.get("display", "front")) for el in elements}
         self.presence.priority = priority
         self.presence.beat()
         return True
@@ -168,17 +184,27 @@ class BusyBar:
     def _with_blanks(self, elements: list[dict]) -> list[dict]:
         """The bar keeps pieces from earlier drawings (matched by id), so a page
         with fewer pieces would leave old ones showing underneath. Swap each
-        piece that went away for a transparent pixel."""
+        piece that went away for a tiny one of the same kind (a piece doesn't
+        change type), put first so the background covers it."""
         ids = {el["id"] for el in elements}
-        gone = [(i, d) for i, d in self._shown.items() if i not in ids]
+        gone = [(i, kind, d) for i, (kind, d) in self._shown.items() if i not in ids]
         if not gone:
             return elements
         if not self._blanks_ok:
             self._delete()  # start afresh instead (may blink for a moment)
             return elements
-        from PIL import Image
-        self.upload_image(BLANK, Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
-        return [image(i, BLANK, 0, 0, display=d) for i, d in gone] + elements
+        blanks = []
+        for i, kind, d in gone:
+            x, y = (9, 8) if d == "front" else (0, 0)  # behind Luca's face / the window's corner
+            if kind == "image":
+                if BLANK not in self._sent:
+                    self.upload(BLANK, _BLANK_PNG)
+                blanks.append(image(i, BLANK, x, y, display=d))
+            elif kind == "text":
+                blanks.append(text(i, " ", x, y, color="#000000FF", display=d))
+            else:
+                blanks.append(rect(i, x, y, 1, 1, "#000000FF", display=d))
+        return blanks + elements
 
     def clear(self) -> None:
         self.presence.leave()
