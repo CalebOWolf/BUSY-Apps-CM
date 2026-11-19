@@ -109,6 +109,7 @@ class Rich:
         self.channel_id: str | None = None
         self.connected = False
         self.warned = False
+        self.may_ask = True  # pop up Discord's Authorize at most once per run
 
     def event(self, evt: str, data: dict) -> None:
         v = self.voice
@@ -191,7 +192,7 @@ class Rich:
         while True:
             self.rpc = self.make_rpc(self.event)
             try:
-                user = await self.rpc.connect()
+                user = await self.rpc.connect(ask=self.may_ask)
                 self.voice.self_id = str(user.get("id"))
                 for evt in ("VOICE_CHANNEL_SELECT", "VOICE_SETTINGS_UPDATE", "NOTIFICATION_CREATE"):
                     await self.rpc.subscribe(evt)
@@ -205,7 +206,13 @@ class Rich:
             except asyncio.CancelledError:
                 raise
             except Exception as err:
-                if not self.warned:
+                if getattr(self.rpc, "asked", False):
+                    # we popped up Authorize and it didn't work out: don't keep asking
+                    self.may_ask, self.warned = False, True
+                    print(f"⚠️  Discord login didn't work: {err}")
+                    print("   Using basic mode. I won't ask again until Luca restarts: fix it, then run "
+                          "`systemctl --user restart luca-discord` (or run it by hand) to try once more.")
+                elif not self.warned:
                     print(f"⚠️  Discord RPC: {err}. Using basic mode until it works.")
                     self.warned = True
             finally:

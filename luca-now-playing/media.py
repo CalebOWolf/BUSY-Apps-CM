@@ -68,6 +68,9 @@ def _num(text: str) -> float:
 # --------------------------------------------------------------------------
 # Linux
 # --------------------------------------------------------------------------
+LINE_LIMIT = 64 * 1024 * 1024
+
+
 class LinuxPlayer:
     """
     Keeps `playerctl --follow` running for every player, so it hears about a
@@ -118,11 +121,17 @@ class LinuxPlayer:
         while True:
             proc = await asyncio.create_subprocess_exec(
                 "playerctl", "--all-players", "--follow", "metadata", "--format", self.FORMAT,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                limit=LINE_LIMIT)  # some players send album art inline, megabytes long
             try:
                 assert proc.stdout
                 async for raw in proc.stdout:
-                    self._ingest(raw.decode(errors="replace"))
+                    try:
+                        self._ingest(raw.decode(errors="replace"))
+                    except Exception as err:  # one odd line shouldn't stop Luca listening
+                        print(f"⚠️  Skipped a playerctl line I couldn't read: {err}")
+            except (ValueError, asyncio.LimitOverrunError):
+                pass  # an even bigger line: restart playerctl below
             finally:
                 if proc.returncode is None:
                     proc.kill()

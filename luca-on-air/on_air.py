@@ -197,7 +197,7 @@ async def animate(sign: Sign) -> None:
                     await asyncio.to_thread(sign.upload_static)
                     sign.online, retry = True, 2
                 await asyncio.to_thread(sign.upload_dynamic)
-                led = art.LED[s.mode] if sign.light else None
+                led = art.LED.get(s.mode) if sign.light else None
                 await asyncio.to_thread(sign.bar.draw, sign.elements(), sign.priority, led)
                 sign.light, sign.on_bar = False, True
                 sign.frame += 1

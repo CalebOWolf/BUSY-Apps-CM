@@ -32,6 +32,10 @@ TOKEN_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") 
 OP_HANDSHAKE, OP_FRAME, OP_CLOSE, OP_PING, OP_PONG = 0, 1, 2, 3, 4
 
 
+class NeedsAuthorize(Exception):
+    """No saved login, and we've already asked once this run."""
+
+
 class RPCError(Exception):
     def __init__(self, code, message):
         super().__init__(f"{message} (code {code})")
@@ -111,8 +115,10 @@ class DiscordRPC:
             pass
 
     # -- connecting --------------------------------------------------------------
-    async def connect(self) -> dict:
-        """Open the socket, shake hands and log in. Returns your user."""
+    async def connect(self, ask: bool = True) -> dict:
+        """Open the socket, shake hands and log in. Returns your user. With
+        ask=False it only uses the saved login and never pops up Authorize."""
+        self.asked = False
         last = None
         for path in socket_paths():
             if path.exists():
@@ -128,7 +134,7 @@ class DiscordRPC:
         if op == OP_CLOSE or ready.get("evt") != "READY":
             raise ConnectionError(f"Discord said no: {ready.get('message', ready)}")
         self._reader_task = asyncio.create_task(self._read_loop())
-        self.user = await self._login()
+        self.user = await self._login(ask)
         return self.user
 
     def close(self) -> None:
@@ -166,9 +172,16 @@ class DiscordRPC:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as err:
-            raise RPCError(err.code, f"Discord refused the login: {err.read().decode(errors='replace')}")
+            detail = err.read().decode(errors="replace")
+            hint = ""
+            if "redirect" in detail.lower():
+                hint = (f" The Redirect in your Discord application (Developer Portal, OAuth2, "
+                        f"Redirects) must be exactly {self.redirect_uri}")
+            elif "invalid_client" in detail:
+                hint = " Check the Client ID and Client Secret (Reset Secret makes the old one stop working)."
+            raise RPCError(err.code, f"Discord refused the login: {detail}.{hint}")
 
-    async def _login(self) -> dict:
+    async def _login(self, ask: bool = True) -> dict:
         tok = self._load_token()
         if tok.get("access_token"):
             try:
@@ -183,6 +196,9 @@ class DiscordRPC:
                     return (await self.command("AUTHENTICATE", {"access_token": new["access_token"]}))["user"]
                 except (RPCError, OSError, KeyError):
                     pass
+        if not ask:
+            raise NeedsAuthorize("Luca isn't authorized in Discord yet")
+        self.asked = True
         print("🔑 Discord will ask you to authorize Luca. Click **Authorize** in the Discord window.")
         code = (await self.command("AUTHORIZE", {"client_id": self.client_id, "scopes": SCOPES},
                                    timeout=300))["code"]

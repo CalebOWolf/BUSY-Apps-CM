@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import io
 import os
 import shutil
@@ -256,8 +257,12 @@ class Screen:
 
 
 def load_cover(url: str) -> Image.Image | None:
-    """Open album art from a file:// or http(s):// address."""
+    """Open album art from a file://, http(s):// or data: address."""
     try:
+        if url.startswith("data:"):
+            img = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1])))
+            img.load()
+            return img
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme == "file":
             img = Image.open(urllib.request.url2pathname(parsed.path))
