@@ -28,12 +28,15 @@ THEMES = {
     "luca_pc_stats": ("STATS", (60, 200, 160), "stats"),
     "luca_weather_den": ("WEATHER", (90, 170, 255), "weather"),
     "luca_aero_clock": ("CLOCK", (140, 120, 255), "clock"),
+    "luca_update_howl": ("UPDATES", (40, 140, 230), "box"),
 }
 ICONS = {
     "stats": ["..........", "........XX", "........XX", ".....XX.XX", ".....XX.XX",
               "..XX.XX.XX", "..XX.XX.XX", "..XX.XX.XX", "XXXXXXXXXX"],
     "weather": ["...Y.Y....", "....YY....", "..YYYYY...", "..YYYY.WW.", "...YYWWWWW",
                 "....WWWWWW", "...WWWWWWW", "....WWWWW.", ".........."],
+    "box": ["..........", ".XXXXXXXX.", ".X..XX..X.", ".XXXXXXXX.", ".X......X.",
+            ".X..YY..X.", ".X......X.", ".XXXXXXXX.", ".........."],
     "clock": ["..XXXXX...", ".X..X..X..", "X...X...X.", "X...X...X.", "X...XXX.X.",
               "X.......X.", ".X.....X..", "..XXXXX...", ".........."],
 }

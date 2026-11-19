@@ -11,7 +11,7 @@ over the top whenever they need to.
 Check on everything: `--status` lists every Luca app, whether it's set to
 start at login, whether it's running, and its priority.
 
-    python luca_den.py                          # stats → weather → clock, 60 s each
+    python luca_den.py                          # stats → weather → clock (→ updates), 60 s each
     python luca_den.py --apps clock,weather --seconds 120
     python luca_den.py --status
     python luca_den.py --install / --uninstall  # Linux: start at login
@@ -43,7 +43,8 @@ SERVICE = "luca-den"
 CARD_SECONDS = 1.6
 REPO = Path(__file__).resolve().parent.parent
 
-ROTATING = {"stats": "luca_pc_stats", "weather": "luca_weather_den", "clock": "luca_aero_clock"}
+ROTATING = {"stats": "luca_pc_stats", "weather": "luca_weather_den", "clock": "luca_aero_clock",
+            "updates": "luca_update_howl"}  # Update Howl only joins while updates are waiting
 
 # Every Luca app: (folder, script, service name, app id, default priority, what it shows)
 ALL_APPS = [
@@ -58,6 +59,8 @@ ALL_APPS = [
     ("luca-discord", "luca_discord.py", "luca-discord", "luca_discord", "64/70", "in a call / on a message"),
     ("luca-stream-chat", "stream_chat.py", "luca-stream-chat", "luca_stream_chat", "66/68", "on chat and alerts"),
     ("luca-blockland", "blockland.py", "luca-blockland", "luca_blockland", "55", "while Minecraft runs"),
+    ("luca-update-howl", "update_howl.py", "luca-update-howl", "luca_update_howl", "18/30",
+     "on new updates / its turn"),
     ("luca-den", "luca_den.py", "luca-den", "luca_den", "25", "between turns"),
 ]
 
@@ -179,7 +182,7 @@ def install(args) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--apps", default="stats,weather,clock",
+    ap.add_argument("--apps", default="stats,weather,clock,updates",
                     help="which always-on apps take turns, in order: stats, weather, clock")
     ap.add_argument("--seconds", type=float, default=60, help="how long each turn lasts (default 60)")
     ap.add_argument("--status", action="store_true", help="list every Luca app and whether it's running")
