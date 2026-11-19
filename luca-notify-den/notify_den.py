@@ -46,7 +46,7 @@ import art  # noqa: E402
 from quiet import QUIET_FILES, quiet_reason  # noqa: E402,F401
 import service  # noqa: E402
 import watcher  # noqa: E402
-from busybar import (BarOffline, BusyBar, image, input_events, is_press,  # noqa: E402
+from busybar import (BarOffline, BusyBar, Scroller, image, input_events, is_press,  # noqa: E402
                      is_running, is_selector, is_wheel, rect)
 
 APP = "luca_notify_den"
@@ -62,6 +62,7 @@ class Den:
     def __init__(self, bar: BusyBar, show: float, private: bool, ignore: set[str],
                  priority: int, fps: float):
         self.bar, self.show, self.private = bar, show, private
+        self.line = Scroller(bar, "msg", art.TEXT_X, art.TEXT_Y, art.TEXT_W)
         self.ignore, self.priority, self.fps = ignore, priority, fps
         self.waiting: deque = deque(maxlen=MAX_WAITING)
         self.history: deque = deque(maxlen=20)   # newest first
@@ -108,7 +109,7 @@ class Den:
         """Upload this notification's strip and back screen, then show it."""
         slot = 1 - self.slot
         strip, loop = art.strip(note, self.private)
-        self.bar.upload_image(f"strip_{slot}.png", strip)
+        self.line.set(strip)
         self.bar.upload_image(f"back_{slot}.png", art.back_screen(
             list(self.history), note, self.private, len(self.waiting) if self.hushed else 0))
         self.slot, self.loop, self.offset, self.hold = slot, loop, 0, HOLD_FRAMES
@@ -129,7 +130,7 @@ class Den:
                 self.offset = (self.offset + 1) % self.loop
         els = [
             image("sky", f"sky_{self.frame % art.SKY_FRAMES}.png", 0, 0),
-            image("msg", f"strip_{self.slot}.png", art.TEXT_X - self.offset, art.TEXT_Y),
+            self.line.element(art.TEXT_X - self.offset),
             image("luca", f"tile_{pose}_{n}.png", 0, 0),
             image("inbox", f"back_{self.slot}.png", 0, 0, display="back"),
         ]
@@ -174,7 +175,7 @@ async def animate(den: Den) -> None:
                 await asyncio.to_thread(den.present, den.waiting.popleft())
             if den.current:
                 led = art.hex_color(art.app_color(den.current.app)) if den.light else None
-                await asyncio.to_thread(den.bar.draw, den.elements(), den.priority, led)
+                await asyncio.to_thread(lambda: den.bar.draw(den.elements(), den.priority, led))
                 den.light, den.on_bar = False, True
                 den.frame += 1
                 await asyncio.sleep(1 / den.fps)

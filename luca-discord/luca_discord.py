@@ -47,7 +47,7 @@ import art  # noqa: E402
 import discord_rpc  # noqa: E402
 import discord_state as ds  # noqa: E402
 import service  # noqa: E402
-from busybar import (BarOffline, BusyBar, image, input_events, is_press, is_selector,  # noqa: E402
+from busybar import (BarOffline, BusyBar, Scroller, image, input_events, is_press, is_selector,  # noqa: E402
                      is_wheel, mark_running, stop_running)
 from quiet import quiet_reason  # noqa: E402
 
@@ -64,6 +64,7 @@ class Bar:
     def __init__(self, bar: BusyBar, voice: ds.Voice, show: float, private: bool,
                  prio_voice: int, prio_message: int, fps: float):
         self.bar, self.voice, self.show, self.private = bar, voice, show, private
+        self.line = Scroller(bar, "msg", art.AREA_X, art.TEXT_Y, art.AREA_W)
         self.prio_voice, self.prio_message, self.fps = prio_voice, prio_message, fps
         self.messages: asyncio.Queue = asyncio.Queue()
         self.waiting: deque = deque(maxlen=5)
@@ -120,7 +121,7 @@ class Bar:
     def present(self, msg: ds.Message) -> None:
         slot = 1 - self.strip_slot
         strip, loop = art.message_strip(msg, self.private)
-        self.bar.upload_image(f"msg_{slot}.png", strip)
+        self.line.set(strip)
         self.strip_slot, self.loop, self.offset, self.hold = slot, loop, 0, HOLD_FRAMES
         self.current, self.shown_at, self.led = msg, time.monotonic(), art.LED_MESSAGE
         self.back_due = 0.0
@@ -146,7 +147,7 @@ class Bar:
         alert = time.monotonic() - self.shown_at < ALERT_SECONDS
         pose = "alert" if alert else "listen"
         return [image("sign", f"sign_message_{self.frame % art.SIGN_FRAMES}.png", 0, 0),
-                image("msg", f"msg_{self.strip_slot}.png", art.AREA_X - self.offset, art.TEXT_Y),
+                self.line.element(art.AREA_X - self.offset),
                 image("luca", f"tile_{pose}_{(self.frame // 3) % 2 if alert else 0}.png", 0, 0)]
 
     def voice_pages(self) -> list[list[tuple]]:
