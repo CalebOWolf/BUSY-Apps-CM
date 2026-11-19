@@ -190,7 +190,7 @@ async def animate(den: Den) -> None:
                     pass
         except BarOffline as err:
             if den.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; I'll keep trying quietly")
             den.online = den.on_bar = False
             if den.current:  # show it again once the bar is back
                 den.waiting.appendleft(den.current)

@@ -3,6 +3,7 @@ Talking to the BUSY Bar, shared by every app in this repo.
 
   BusyBar        upload images, draw elements, clear the screens (local HTTP API)
   BarOffline     raised when the bar doesn't answer, so apps can wait and retry
+  Scroller       long text that scrolls, sent a screen-sized piece at a time
   image(), rect(), text()   build display elements
   input_events() follow the bar's buttons and wheel (needs busylib)
   Presence       which of our apps is on top, so only that one answers the buttons
@@ -34,12 +35,30 @@ BACK_W, BACK_H = 160, 80
 
 
 class BarOffline(Exception):
-    """The BUSY Bar didn't answer (unplugged, asleep, off Wi-Fi…) or said no."""
+    """Something went wrong talking to the BUSY Bar: apps wait, then upload
+    their pictures again and retry."""
 
+
+class BarRefused(BarOffline):
+    """The bar answered, but said no to a request (and said why)."""
 
 
 class NotOnTop(Exception):
     """The bar is showing something with a higher priority. Not an error."""
+
+
+REFUSALS_BEFORE_RESET = 3   # refused drawings in a row before the app starts over
+LOG_AGAIN_AFTER = 300       # seconds before the same complaint is printed again
+BLANK = "blank.png"         # a transparent pixel, standing in for pieces that went away
+
+
+def _reason(detail: str) -> str:
+    """The bar's error message, on one line."""
+    try:
+        detail = json.loads(detail).get("error", detail)
+    except (ValueError, AttributeError):
+        pass
+    return " ".join(str(detail).split()) or "no reason given"
 
 
 class BusyBar:
@@ -49,8 +68,13 @@ class BusyBar:
         self.base = f"http://{host}/api"
         self.token = token
         self.presence = Presence(app, 50)
-        self._shown: set[str] = set()  # element ids from the last draw
+        self._shown: dict[str, str] = {}   # element id -> display, from the last draw
+        self._sent: dict[str, int] = {}    # file name -> hash of what we last uploaded
+        self._refused = 0
+        self._logged: dict[str, float] = {}
+        self._blanks_ok = True
 
+    # -- talking to the bar ----------------------------------------------------
     def _call(self, method: str, path: str, params: dict | None = None,
               body: bytes | None = None, content_type: str | None = None) -> dict:
         url = self.base + path
@@ -68,15 +92,30 @@ class BusyBar:
             detail = err.read().decode(errors="replace")
             if err.code == 409 and "priority" in detail.lower():
                 raise NotOnTop(detail) from err
-            raise BarOffline(f"it said {err.code} for {method} {path}: {detail}") from err
+            what = {"/display/draw": "a drawing", "/assets/upload": "a picture"}.get(path, path)
+            raise BarRefused(f"it refused {what} ({err.code}: {_reason(detail)})") from err
         except (urllib.error.URLError, OSError) as err:
-            raise BarOffline(str(getattr(err, "reason", err))) from err
+            self._sent.clear()  # it may have restarted: upload everything again
+            raise BarOffline(f"can't reach it ({getattr(err, 'reason', err)})") from err
         return json.loads(raw) if raw else {}
 
+    def _log_once(self, message: str) -> None:
+        now = time.monotonic()
+        if now - self._logged.get(message, -LOG_AGAIN_AFTER) >= LOG_AGAIN_AFTER:
+            self._logged[message] = now
+            print(f"⚠️  BUSY Bar: {message}", flush=True)
+
+    # -- pictures --------------------------------------------------------------
     def upload(self, filename: str, data: bytes) -> None:
+        """Upload a file, unless the bar already has exactly this under that name."""
+        digest = hash(data)
+        if self._sent.get(filename) == digest:
+            return
+        self._sent.pop(filename, None)
         self._call("POST", "/assets/upload",
                    params={"application_name": self.app, "file": filename},
                    body=data, content_type="application/octet-stream")
+        self._sent[filename] = digest
 
     def upload_image(self, filename: str, image) -> None:
         """Upload a Pillow image as PNG."""
@@ -84,19 +123,21 @@ class BusyBar:
         image.save(buf, "PNG")
         self.upload(filename, buf.getvalue())
 
+    def forget_uploads(self) -> None:
+        """Upload everything again next time (e.g. after the bar lost its files)."""
+        self._sent.clear()
+
+    # -- drawing ---------------------------------------------------------------
     def draw(self, elements: list[dict], priority: int = 50, led: str | None = None) -> bool:
         """Show these elements. `led` ("#RRGGBBAA") also lights the bar's
         notification LED in that color.
 
         Returns False (after a short pause, so we don't hammer the bar) when
-        the bar is busy showing something more important. That's normal, not
-        an error: just try again next frame."""
-        # The bar keeps elements from earlier draws by id, so a page with fewer
-        # pieces would leave the old ones showing underneath: start afresh.
-        ids = {el["id"] for el in elements}
-        if any(i not in ids for i in self._shown):
-            self._delete()
-        payload = {"application_name": self.app, "priority": priority, "elements": elements}
+        the bar is showing something more important, or turned this one
+        drawing down. Both are fine: just carry on with the next frame. Only
+        when it keeps refusing does this raise, so the app starts over."""
+        payload = {"application_name": self.app, "priority": priority,
+                   "elements": self._with_blanks(elements)}
         if led:
             payload["led_notification_color"] = led
         try:
@@ -106,20 +147,48 @@ class BusyBar:
             self.presence.leave()
             time.sleep(1)
             return False
-        self._shown = {el["id"] for el in elements}
+        except BarRefused as err:
+            if self._blanks_ok and len(payload["elements"]) > len(elements):
+                self._blanks_ok = False  # this bar won't take our blanks: clear instead
+                return self.draw(elements, priority, led)
+            self._refused += 1
+            self._log_once(str(err))
+            self._sent.clear()  # maybe a picture went missing: send them again
+            if self._refused >= REFUSALS_BEFORE_RESET:
+                self._refused = 0
+                raise
+            time.sleep(0.5)
+            return False
+        self._refused = 0
+        self._shown = {el["id"]: el.get("display", "front") for el in elements}
         self.presence.priority = priority
         self.presence.beat()
         return True
+
+    def _with_blanks(self, elements: list[dict]) -> list[dict]:
+        """The bar keeps pieces from earlier drawings (matched by id), so a page
+        with fewer pieces would leave old ones showing underneath. Swap each
+        piece that went away for a transparent pixel."""
+        ids = {el["id"] for el in elements}
+        gone = [(i, d) for i, d in self._shown.items() if i not in ids]
+        if not gone:
+            return elements
+        if not self._blanks_ok:
+            self._delete()  # start afresh instead (may blink for a moment)
+            return elements
+        from PIL import Image
+        self.upload_image(BLANK, Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
+        return [image(i, BLANK, 0, 0, display=d) for i, d in gone] + elements
 
     def clear(self) -> None:
         self.presence.leave()
         self._delete()
 
     def _delete(self) -> None:
-        self._shown = set()
+        self._shown = {}
         try:
             self._call("DELETE", "/display/draw", params={"application_name": self.app})
-        except BarOffline as err:
+        except BarRefused as err:
             if "not displaying anything" not in str(err):
                 raise  # already off the bar (another app was on top) is fine
 
@@ -135,7 +204,8 @@ class Scroller:
     """
     A long line of text in a window on the front screen. The bar won't take a
     picture wider than its 72-pixel screen, so instead of sliding one long
-    strip along, we upload just the part you can see whenever it moves.
+    strip along, we show just the part you can see. Each position gets its
+    own little file, so text that loops is only uploaded the first time round.
 
         line = Scroller(bar, "msg", x=20, y=4, width=52)
         line.set(strip_image)
@@ -145,23 +215,17 @@ class Scroller:
     def __init__(self, bar: "BusyBar", name: str, x: int, y: int, width: int):
         self.bar, self.name, self.x, self.y, self.width = bar, name, x, y, width
         self.strip = None
-        self.version = 0
-        self.slot = 0
-        self.shown = None  # (version, x) currently uploaded
 
     def set(self, strip) -> None:
         self.strip = strip
-        self.version += 1
 
     def element(self, x: int) -> dict:
-        """Uploads the visible part if it moved (call this off the event loop)."""
-        if (self.version, x) != self.shown:
-            left = self.x - x
-            view = self.strip.crop((left, 0, left + self.width, self.strip.height))
-            slot = 1 - self.slot
-            self.bar.upload_image(f"{self.name}_{slot}.png", view)
-            self.slot, self.shown = slot, (self.version, x)
-        return image(self.name, f"{self.name}_{self.slot}.png", self.x, self.y)
+        """Uploads this position if the bar doesn't have it yet (call this off
+        the event loop)."""
+        left = self.x - x
+        file = f"{self.name}_{left + 1000}.png"
+        self.bar.upload_image(file, self.strip.crop((left, 0, left + self.width, self.strip.height)))
+        return image(self.name, file, self.x, self.y)
 
 
 def image(id_: str, path: str, x: int, y: int, display: str = "front") -> dict:

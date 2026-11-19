@@ -126,7 +126,7 @@ async def rotate(den: Den) -> None:
             retry = 2
         except BarOffline as err:
             if den.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); still taking turns, I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; still taking turns, I'll keep trying quietly")
             den.online = den.on_bar = False
             den.current, den.until = here[0] if here else None, time.time() + den.seconds
             write_turn(den.current, den.apps, den.until)

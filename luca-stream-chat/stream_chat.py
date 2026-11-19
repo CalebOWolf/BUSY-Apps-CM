@@ -195,7 +195,7 @@ async def animate(box: Chatbox) -> None:
                     pass
         except BarOffline as err:
             if box.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; I'll keep trying quietly")
             box.online = box.on_bar = False
             box.current = None
             await asyncio.sleep(retry)

@@ -243,7 +243,7 @@ async def animate(app: App, fps: float) -> None:
             await asyncio.sleep(1 / fps)
         except BarOffline as err:
             if app.online or retry == 2:
-                print(f"🔌 Can't reach the BUSY Bar ({err}); I'll keep trying quietly")
+                print(f"🔌 BUSY Bar trouble: {err}; I'll keep trying quietly")
             app.online = False
             await asyncio.sleep(retry)
             retry = min(retry * 2, 30)
