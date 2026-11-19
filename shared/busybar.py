@@ -37,6 +37,11 @@ class BarOffline(Exception):
     """The BUSY Bar didn't answer (unplugged, asleep, off Wi-Fi…) or said no."""
 
 
+
+class NotOnTop(Exception):
+    """The bar is showing something with a higher priority. Not an error."""
+
+
 class BusyBar:
     def __init__(self, host: str, app: str, token: str | None = None):
         self.host = host
@@ -60,6 +65,8 @@ class BusyBar:
                 raw = resp.read()
         except urllib.error.HTTPError as err:
             detail = err.read().decode(errors="replace")
+            if err.code == 409 and "priority" in detail.lower():
+                raise NotOnTop(detail) from err
             raise BarOffline(f"it said {err.code} for {method} {path}: {detail}") from err
         except (urllib.error.URLError, OSError) as err:
             raise BarOffline(str(getattr(err, "reason", err))) from err
@@ -76,16 +83,26 @@ class BusyBar:
         image.save(buf, "PNG")
         self.upload(filename, buf.getvalue())
 
-    def draw(self, elements: list[dict], priority: int = 50, led: str | None = None) -> None:
+    def draw(self, elements: list[dict], priority: int = 50, led: str | None = None) -> bool:
         """Show these elements. `led` ("#RRGGBBAA") also lights the bar's
-        notification LED in that color."""
+        notification LED in that color.
+
+        Returns False (after a short pause, so we don't hammer the bar) when
+        the bar is busy showing something more important. That's normal, not
+        an error: just try again next frame."""
         payload = {"application_name": self.app, "priority": priority, "elements": elements}
         if led:
             payload["led_notification_color"] = led
-        self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
-                   content_type="application/json")
+        try:
+            self._call("POST", "/display/draw", body=json.dumps(payload).encode(),
+                       content_type="application/json")
+        except NotOnTop:
+            self.presence.leave()
+            time.sleep(1)
+            return False
         self.presence.priority = priority
         self.presence.beat()
+        return True
 
     def clear(self) -> None:
         self.presence.leave()
