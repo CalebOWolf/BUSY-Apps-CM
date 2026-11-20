@@ -83,6 +83,8 @@ APPS = [
         "Twitch / YouTube live chat (asks for your channel)", ["pillow", "busylib"]),
     App("blockland", "luca-blockland", "blockland.py", "luca-blockland",
         "Luca and a blocky landscape while your Minecraft instance runs", ["pillow", "busylib"]),
+    App("circles", "luca-circles", "circles.py", "luca-circles",
+        "osu!: your live combo and accuracy while you click circles (with tosu)", ["pillow", "busylib"]),
     App("updates", "luca-update-howl", "update_howl.py", "luca-update-howl",
         "your Arch updates (repos + AUR via paru), and when to reboot", ["pillow", "busylib"],
         {"checkupdates": "pacman-contrib"}),
