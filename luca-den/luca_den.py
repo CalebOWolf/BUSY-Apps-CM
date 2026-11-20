@@ -59,6 +59,7 @@ ALL_APPS = [
     ("luca-discord", "luca_discord.py", "luca-discord", "luca_discord", "64/70", "in a call / on a message"),
     ("luca-stream-chat", "stream_chat.py", "luca-stream-chat", "luca_stream_chat", "66/68", "on chat and alerts"),
     ("luca-blockland", "blockland.py", "luca-blockland", "luca_blockland", "55", "while Minecraft runs"),
+    ("luca-circles", "circles.py", "luca-circles", "luca_circles", "57", "while osu! is open"),
     ("luca-update-howl", "update_howl.py", "luca-update-howl", "luca_update_howl", "18/30",
      "on new updates / its turn"),
     ("luca-den", "luca_den.py", "luca-den", "luca_den", "25", "between turns"),

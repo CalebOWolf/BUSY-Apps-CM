@@ -36,6 +36,7 @@ is where those ideas live.
 | [💬 Luca Discord](luca-discord/) | Discord on the bar: your voice call with who's talking, mute status (OK mutes you), and new messages, in glossy blurple Aero | ✅ |
 | [💜 Luca Stream Chat](luca-stream-chat/) | Your Twitch (no login needed) or YouTube live chat scrolling by, with sparkling gold alerts for subs, raids, cheers and Super Chats | ✅ |
 | [⛏️ Luca Blockland](luca-blockland/) | When your Minecraft instance starts, Luca grabs a pickaxe beside a blocky landscape that scrolls by, day or starry night, with your instance's name and how long you've played | ✅ |
+| [🎯 Luca Circles](luca-circles/) | For when you're clicking circles in osu!: your live combo and accuracy (from tosu) with rings rippling by, a red flash on a miss and a gold results screen with your rank, while Luca focuses and cheers | ✅ |
 | [📦 Luca Update Howl](luca-update-howl/) | Your Arch updates (official repos and the AUR through paru): Luca pops up when new ones arrive, howls for a kernel update, wears a hard hat when it's time to reboot, and takes a turn in the Den while updates wait | ✅ |
 | [🏠 Luca's Den](luca-den/) | Home base: the always-on apps (stats, weather, clock) take turns with glossy channel-switch cards, and `--status` checks on every app | ✅ |
 | [📶 BUSY Speedtest](busy-speedtest/) | A simple internet speed test: ping, download and upload, on the front strip and the back screen | ✅ |
